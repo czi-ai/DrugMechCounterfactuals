@@ -1,4 +1,5 @@
-# Project Name
+# DrugMechCounterfactuals: The Drug Mechanisms Counterfactuals Dataset
+
 Replace the above line with the name of this project, and replace this sentence with a description of this repository as well as its contents, ownership, and purpose.
 
 ## Code of Conduct
