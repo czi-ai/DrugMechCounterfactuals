@@ -13,6 +13,10 @@ from drugmechcf.utils.misc import in_databricks_and_dbfs
 #   Globals
 # -----------------------------------------------------------------------------
 
+# Shell vars containing path to dir containing DrugMechCounterfactuals clone.
+SHELLVAR_PROJDIR = "PROJDIR"
+SHELLVAR_DRUGMECHCFDIR = "DRUGMECHCFDIR"
+
 # Shell Var for getting DataBricks UserName
 SHELLVAR_DATABRICKS_USER_NAME = "DATABRICKS_USER_NAME"
 
@@ -70,37 +74,6 @@ class ProjectConfig:
 
         return basedir
 
-    def get_model_checkpoints_dir(self, verbose=True) -> str:
-        """
-        Where checkpoints for models are stored during training, and where to retrieve from for inference.
-        $OUTPUT_BASEDIR/model_checkpoints
-        """
-        basedir = self.get_output_basedir(create_it=False, verbose=verbose)
-        checkpoints_base_dir = os.path.join(basedir, "model_checkpoints")
-        return checkpoints_base_dir
-
-    def get_training_log_dir(self, run_name: str = None) -> str:
-        """
-        Path to store model checkpoints and related logs for training run `run_name`.
-        IF `run_name` not provided THEN current timestamp is used.
-
-        :returns: $OUTPUT_BASEDIR/model_checkpoints/{run_name}
-        """
-        if run_name is None:
-            run_name = datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-
-        log_dir = os.path.join(self.get_model_checkpoints_dir(), run_name)
-        return log_dir
-
-    def get_cached_models_dir(self, verbose=True) -> str:
-        """
-        Where downloaded models are cached, e.g. from HuggingFace repo.
-        $output_dir/Cache
-        """
-        basedir = self.get_output_basedir(create_it=False, verbose=verbose)
-        cache_dir = os.path.join(basedir, "Cache")
-        return cache_dir
-
     def get_input_data_dir(self, verbose=True) -> str:
         """
         Where input data is kept.
@@ -116,8 +89,6 @@ class ProjectConfig:
         print("    input_basedir =", self.get_input_basedir())
         print("    input_data_dir =", self.get_input_data_dir())
         print("    output_basedir =", self.get_output_basedir())
-        print("    cached_models_dir =", self.get_cached_models_dir())
-        print("    model_checkpoints_dir =", self.get_model_checkpoints_dir())
         print()
         return
 # /
@@ -131,6 +102,11 @@ def get_project_base_dir():
     """
     Path to $PROJDIR
     """
+    if projdir := os.environ.get(SHELLVAR_DRUGMECHCFDIR):
+        return projdir
+    elif projdir := os.environ.get(SHELLVAR_PROJDIR):
+        return projdir
+
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
     try:
