@@ -1,5 +1,10 @@
 """
-Compute variances of Counterfactual experiments from `llmx`
+Computes mean and variance of accuracy metrics across multiple runs of Counterfactual experiments:
+    `multirun_stats_addlink()` and `multirun_stats_editlink()`,
+and grouped metrics (using bootstrap on groups of single runs):
+    `summarize_counterfactual_metrics_bs()`,
+as described in the FLLM-25 paper.
+See `MAIN` section at bottom of file for invoking from shell.
 """
 
 import json
@@ -33,6 +38,8 @@ from drugmechcf.utils.misc import (NpEncoder, pp_underlined_hdg, suppressed_stdo
 
 from .bootstrap import stratified_bootstrap
 
+from drugmechcf.utils.projconfig import get_project_local_temp_dir
+
 
 # -----------------------------------------------------------------------------
 #   Globals
@@ -55,7 +62,8 @@ USE_STRATIFIED_BOOTSTRAP = True
 
 DEFAULT_N_RESAMPLES = 9999
 
-TEMPDIR = "../Temp"
+TEMPDIR = get_project_local_temp_dir()
+"""Location of temporary files. Where output files from each run are temporarily stored."""
 
 
 # -----------------------------------------------------------------------------
@@ -68,6 +76,13 @@ def get_temp_suffix() -> str:
 
 
 def get_temp_json(root_prefix: str = None) -> str:
+    """
+    Get path to temporary output JSON file.
+    """
+
+    if not os.path.exists(TEMPDIR):
+        os.mkdir(TEMPDIR)
+
     if root_prefix is None:
         root_prefix = "tmp"
 
@@ -122,6 +137,9 @@ def add_task_run(output_file: str,
                  run_metrics: dict[str, Any],
                  accumulate_metrics_fn: Callable,
                  ) -> dict[str, Any]:
+    """
+    Add new completed task run to the output JSON file.
+    """
 
     if not isinstance(task, str):
         task = "/".join([str(t) for t in task])
@@ -142,6 +160,9 @@ def add_task_run(output_file: str,
 
 
 def check_task_nbr_runs(sdict: dict[str, Any], task: Union[str, list, tuple], max_nruns: int = 5) -> int:
+    """
+    How many more runs needed for this task?
+    """
 
     if not isinstance(task, str):
         task = "/".join([str(t) for t in task])
@@ -166,6 +187,7 @@ def check_task_nbr_runs(sdict: dict[str, Any], task: Union[str, list, tuple], ma
 
 def run_editlink(samples_data_file: str,
                  model_key: str = None,
+                 model_params: dict = None,
                  insert_known_moas=False,
                  run_id: str = None):
     """
@@ -190,6 +212,7 @@ def run_editlink(samples_data_file: str,
             call_test_editlink_batch(samples_data_file,
                                      tmp_json,
                                      model_key=model_key,
+                                     model_params=model_params,
                                      prompt_version=prompt_version,
                                      insert_known_moas=insert_known_moas,
                                      )
@@ -201,7 +224,7 @@ def run_editlink(samples_data_file: str,
 
     tmp_metrics["LLM Calls"] = OpenAICompletionClient.get_nbr_calls()
 
-    # Delete the tmp JSON file
+    # Delete the tmp JSON file. Comment out if you want to keep the output files.
     os.remove(tmp_json)
 
     return tmp_metrics
@@ -209,17 +232,72 @@ def run_editlink(samples_data_file: str,
 
 @retry(retry=retry_if_exception_type(BadRequestError),
        stop=stop_after_attempt(3))
-def call_test_editlink_batch(samples_data_file, tmp_json, model_key, prompt_version, insert_known_moas):
+def call_test_editlink_batch(samples_data_file, tmp_json, model_key, prompt_version, insert_known_moas,
+                             model_params=None):
+
+    if model_params is None:
+        model_params = dict()
+
     test_editlink_batch(samples_data_file,
                         tmp_json,
                         model_key=model_key,
                         prompt_version=prompt_version,
                         insert_known_moas=insert_known_moas,
+                        **model_params
                         )
     return
 
 
 def multirun_stats_editlink(input_file: str, output_file: str):
+    """
+    Run `nruns` runs of Change/Delete link query set to compile metrics variances (Change = Invert-Link).
+
+    :param input_file: JSON file of options.
+        File format:
+            {
+                "args": {
+                    "insert_known_moas": true | false,  ... whether to insert known MoAs (i.e. closed world)
+                    "model_keys": list[str],            ... keys for models to test
+                    "model_params": dict[str, dict],    ... Optional additional params per model, to pass to
+                                                            `drugmechcf.llmx.test_editlink.test_editlink_batch()`
+                    "nruns": int,                       ... Nbr runs to comute variances from
+                    "data_key": "change" | "delete"     ... Type of query, also indicates which query samples files
+                }
+            }
+
+        File example (as used for results in the paper):
+            {
+                "args": {
+                    "insert_known_moas": true,
+                    "model_keys": [
+                        "4o",
+                        "o3",
+                        "o3-mini",
+                        "o4-mini"
+                    ],
+                    "nruns": 5,
+                    "data_key": "change"
+                }
+            }
+
+        A `model_key` can be one of the convenience abbreviated model names as defined in
+        `drugmechcf.llm.openai.MODEL_KEYS`, or a model-name.
+
+        `model_params` allows additional args to be passed to `drugmechcf.llmx.test_editlink.test_editlink_batch()`
+        for a particular model, when needed. The format is:
+            MODEL_KEY: dict[ ARG_NAME(str): VALUE ]
+        Example use of "model_params" (filled only for models needing additional params):
+                    "model_params": {
+                        "Qwen/Qwen2.5-3B-Instruct": {
+                            "api_key": "EMPTY",
+                            "base_url": "http://localhost:8000/v1",
+                            "n_worker_threads": 1,
+                            "timeout_secs": 300
+                        }
+                    }
+
+    :param output_file: JSON file where runs and accumulated metrics are stored
+    """
 
     pp_funcargs(multirun_stats_editlink)
 
@@ -229,7 +307,10 @@ def multirun_stats_editlink(input_file: str, output_file: str):
         sdict = json.load(f)
 
     data_key = sdict["args"]["data_key"]
+
     model_keys = sdict["args"].get("model_keys")
+    all_model_params = sdict["args"].get("model_params", dict())
+
     insert_known_moas = sdict["args"].get("insert_known_moas", False)
     nruns = sdict["args"].get("nruns", 5)
 
@@ -256,6 +337,8 @@ def multirun_stats_editlink(input_file: str, output_file: str):
 
             task = (data_file_name, mdl_k, insert_known_moas)
 
+            model_params = all_model_params.get(mdl_k)
+
             remaining_runs = nruns - check_task_nbr_runs(sdict, task, max_nruns=nruns)
             if remaining_runs <= 0:
                 print("Skipping completed task:", task)
@@ -269,6 +352,7 @@ def multirun_stats_editlink(input_file: str, output_file: str):
 
                 tmp_metrics = run_editlink(samples_data_file,
                                            model_key=mdl_k,
+                                           model_params=model_params,
                                            insert_known_moas=insert_known_moas,
                                            run_id=f"{n + 1}")
 
@@ -323,9 +407,10 @@ def accumulate_editlink_metrics(sesn_metrics: dict[str, Any], cum_metrics=None) 
 
 
 def run_addlink(samples_data_file: str,
-                 model_key: str = None,
-                 insert_known_moas=False,
-                 run_id: str = None):
+                model_key: str = None,
+                model_params: dict = None,
+                insert_known_moas=False,
+                run_id: str = None):
     """
     Returns metrics dict,
         OR str(exception) if exception encountered.
@@ -351,6 +436,7 @@ def run_addlink(samples_data_file: str,
             call_test_addlink_batch(samples_data_file,
                                     tmp_json,
                                     model_key=model_key,
+                                    model_params=model_params,
                                     insert_known_moas=insert_known_moas,
                                     include_examples=include_examples,
                                     )
@@ -362,7 +448,7 @@ def run_addlink(samples_data_file: str,
 
     tmp_metrics["LLM Calls"] = OpenAICompletionClient.get_nbr_calls()
 
-    # Delete the tmp JSON file
+    # Delete the tmp JSON file. Comment out if you want to keep the output files.
     os.remove(tmp_json)
 
     return tmp_metrics
@@ -371,17 +457,68 @@ def run_addlink(samples_data_file: str,
 @retry(retry=retry_if_exception_type(BadRequestError),
        wait=wait_random(2, 10),
        stop=stop_after_attempt(7))
-def call_test_addlink_batch(samples_data_file, tmp_json, model_key, insert_known_moas, include_examples):
+def call_test_addlink_batch(samples_data_file, tmp_json, model_key, insert_known_moas, include_examples,
+                            model_params=None):
     test_addlink_batch(samples_data_file,
                        tmp_json,
                        model_key=model_key,
                        insert_known_moas=insert_known_moas,
-                       include_examples=include_examples
+                       include_examples=include_examples,
+                       **model_params
                        )
     return
 
 
 def multirun_stats_addlink(input_file: str, output_file: str):
+    """
+    Run `nruns` runs of AddLink query set to compile metrics variances.
+
+    :param input_file: JSON file of options.
+        File format:
+            {
+                "args": {
+                    "insert_known_moas": true | false,  ... whether to insert known MoAs (i.e. closed world)
+                    "model_keys": list[str],            ... keys for models to test
+                    "model_params": dict[str, dict],    ... Optional additional params per model, to pass to
+                                                            `drugmechcf.llmx.test_editlink.test_editlink_batch()`
+                    "nruns": int,                       ... Nbr runs to comute variances from
+                    "data_key": "AddLink"               ... Type of query, also indicates which query samples files
+                }
+            }
+
+        File example (as used for results in the paper):
+            {
+                "args": {
+                    "insert_known_moas": false,
+                    "model_keys": [
+                        "4o",
+                        "o3",
+                        "o3-mini",
+                        "o4-mini"
+                    ],
+                    "nruns": 5,
+                    "data_key": "AddLink"
+                }
+            }
+
+        A `model_key` can be one of the convenience abbreviated model names as defined in
+        `drugmechcf.llm.openai.MODEL_KEYS`, or a model-name.
+
+        `model_params` allows additional args to be passed to `drugmechcf.llmx.test_editlink.test_editlink_batch()`
+        for a particular model, when needed. The format is:
+            MODEL_KEY: dict[ ARG_NAME(str): VALUE ]
+        Example use of "model_params" (filled only for models needing additional params):
+                    "model_params": {
+                        "Qwen/Qwen2.5-3B-Instruct": {
+                            "api_key": "EMPTY",
+                            "base_url": "http://localhost:8000/v1",
+                            "n_worker_threads": 1,
+                            "timeout_secs": 300
+                        }
+                    }
+
+    :param output_file: JSON file where runs and accumulated metrics are stored
+    """
 
     pp_funcargs(multirun_stats_addlink)
 
@@ -391,7 +528,10 @@ def multirun_stats_addlink(input_file: str, output_file: str):
         sdict = json.load(f)
 
     data_key = sdict["args"]["data_key"]
+
     model_keys = sdict["args"].get("model_keys")
+    all_model_params = sdict["args"].get("model_params", dict())
+
     insert_known_moas = sdict["args"].get("insert_known_moas", False)
     nruns = sdict["args"].get("nruns", 5)
 
@@ -418,6 +558,8 @@ def multirun_stats_addlink(input_file: str, output_file: str):
 
             task = (data_file_name, mdl_k, insert_known_moas)
 
+            model_params = all_model_params.get(mdl_k)
+
             remaining_runs = nruns - check_task_nbr_runs(sdict, task, max_nruns=nruns)
             if remaining_runs <= 0:
                 print("Skipping completed task:", task)
@@ -431,6 +573,7 @@ def multirun_stats_addlink(input_file: str, output_file: str):
 
                 tmp_metrics = run_addlink(samples_data_file,
                                           model_key=mdl_k,
+                                          model_params=model_params,
                                           insert_known_moas=insert_known_moas,
                                           run_id=f"{n + 1}")
 
@@ -550,133 +693,6 @@ def compile_metrics(run_files: list[str], to_csv=False):
     return
 
 
-def read_counterfactuals_metrics(excel_file: str = "../Data/Sessions/Latest/Variances/Summary_edit.xlsx",
-                                 sheet: str = "Summary_edit",
-                                 ) -> pd.DataFrame | None:
-
-    df = pd.read_excel(excel_file, sheet_name=sheet)
-
-    hdg_i = None
-    for i, row in enumerate(df.itertuples()):
-        if row[2] == "QueryType":
-            hdg_i = i
-            break
-
-    if hdg_i is None:
-        print("Headings row not found!")
-        return None
-
-    s = hdg_i + 1
-
-    # Make DF from the strict-metrics data, skipping empty lines
-    data = pd.DataFrame.from_records([t[2:13] for t in df.loc[s:s+50:2].itertuples() if not pd.isna(t[1])],
-                                     columns=df.loc[hdg_i].values[1:12])
-
-    return data
-
-
-def summarize_counterfactual_metrics(excel_file: str = "../Data/Sessions/Latest/Variances/Summary_edit.xlsx",
-                                     sheet: str = "Summary_edit",
-                                     ):
-    """
-    These are obsolete!
-    They compute mean of means, and std of a small set of means.
-    Use `summarize_counterfactual_metrics_bs` instead
-    :param excel_file:
-    :param sheet:
-    :return:
-    """
-
-    pp_funcargs(summarize_counterfactual_metrics)
-
-    df = read_counterfactuals_metrics(excel_file, sheet)
-
-    if df is None:
-        return
-
-    print("Headings =", ", ".join(df.columns.values))
-    print()
-
-    pp_summary_metrics("All Counterfactuals", df)
-
-    # Open, Closed
-
-    pp_summary_metrics("All samples, Open world",
-                       df[df["is_Closed"] == "no"])
-
-    pp_summary_metrics("All samples, Closed world",
-                       df[df["is_Closed"] == "Yes"])
-
-    # Pos, Neg
-
-    pp_summary_metrics("All Positive samples",
-                       df[df["is_Positive"] == "pos"])
-
-    pp_summary_metrics("All Negative samples",
-                       df[df["is_Positive"] == "neg"])
-
-    # Pos - Neg, Open - Closed
-
-    pp_summary_metrics("Positive samples, Open world",
-                       df[(df["is_Positive"] == "pos") & (df["is_Closed"] == "no")])
-
-    pp_summary_metrics("Negative samples, Open world",
-                       df[(df["is_Positive"] == "neg") & (df["is_Closed"] == "no")])
-
-    pp_summary_metrics("Positive samples, Closed world",
-                       df[(df["is_Positive"] == "pos") & (df["is_Closed"] == "Yes")])
-
-    pp_summary_metrics("Negative samples, Closed world",
-                       df[(df["is_Positive"] == "neg") & (df["is_Closed"] == "Yes")])
-
-    # DPI - PPI, Open - Closed
-
-    pp_summary_metrics("Source is Drug (Surface cf.), Open world",
-                       df[(df["is_Surface"] == "Yes") & (df["is_Closed"] == "no")])
-
-    pp_summary_metrics("Source is Not Drug (Deep cf.), Open world",
-                       df[(df["is_Surface"] == "no") & (df["is_Closed"] == "no")])
-
-    pp_summary_metrics("Source is Drug (Surface cf.), Closed world",
-                       df[(df["is_Surface"] == "Yes") & (df["is_Closed"] == "Yes")])
-
-    pp_summary_metrics("Source is Not Drug (Deep cf.), Closed world",
-                       df[(df["is_Surface"] == "no") & (df["is_Closed"] == "Yes")])
-
-    # Change + Delete, not Drug, Open World
-
-    pp_summary_metrics("Change + Delete, not Drug (Deep cf.), Open World - Positives",
-                       df[ ((df["QueryType"] == "change") | (df["QueryType"] == "delete")) &
-                           (df["is_Surface"] == "no") & (df["is_Closed"] == "no") & (df["is_Positive"] == "pos")])
-
-    pp_summary_metrics("Change + Delete, not Drug (Deep cf.), Open World - Negatives",
-                       df[ ((df["QueryType"] == "change") | (df["QueryType"] == "delete")) &
-                           (df["is_Surface"] == "no") & (df["is_Closed"] == "no") & (df["is_Positive"] == "neg")])
-
-    return
-
-
-def pp_summary_metrics(hdg: str, df: pd.DataFrame):
-
-    print("## " + hdg)
-    print()
-
-    # For the 4 models
-    mdf = df[df.columns.values[-4:]]
-
-    smdf = pd.DataFrame.from_records([["min"] + mdf.min().values.tolist(),
-                                      ["max"] + mdf.max().values.tolist(),
-                                      ["Median"] + mdf.median().values.tolist(),
-                                      ["Mean"] + mdf.mean().values.tolist(),
-                                      ["s.d."] + mdf.std(ddof=0).values.tolist(),
-                                      ],
-                                     columns=["Metric"] + df.columns.values.tolist()[-4:])
-
-    print(reset_df_index(smdf).to_markdown(floatfmt=".3f", index=False))
-    print("\n")
-    return
-
-
 # -----------------------------------------------------------------------------
 #   Functions: Bootstrapped stats for group metrics
 # -----------------------------------------------------------------------------
@@ -688,14 +704,8 @@ def bootstrapped_stats(session_files: list[str],
                        upsample_250 = False,
                        ) -> BootstrapStats:
     """
-
-    :param session_files:
-    :param n_resamples:
-    :param confidence_level:
-    :param upsample_250: IF AddLink and delete/change qtypes, then upsample delete/change
-        So n_samples = 250 gets repeated 4x.
-
-    :return: returns what
+    As for `stratified_bootstrapped_stats()`, except bootstrapping is not stratified, which is not
+    appropriate for mean across a group of categories.
     """
 
     all_is_correct_preds = []
@@ -739,15 +749,16 @@ def stratified_bootstrapped_stats(session_files: list[str],
                                   upsample_250 = False,
                                   ) -> BootstrapStats:
     """
-    Uses stratified bootstrap.
+    Uses stratified bootstrap to compute confidence interval around mean response accuracy across a group of
+    query sessions.
 
-    :param session_files:
-    :param n_resamples:
+    :param session_files: List of session files to read.
+    :param n_resamples: for bootstrap
     :param confidence_level:
     :param upsample_250: IF AddLink and delete/change qtypes, then upsample delete/change
         So n_samples = 250 gets repeated 4x.
 
-    :return: returns what
+    :return: `BootstrapStats` for response accuracy.
     """
 
     all_is_correct_preds = []
@@ -791,8 +802,17 @@ def stratified_bootstrapped_stats(session_files: list[str],
     return bs_stats
 
 
-def read_all_session_files(bdir = "../Data/Sessions/Latest") -> pd.DataFrame:
+def read_all_session_files(bdir = "../Data/Sessions") -> pd.DataFrame:
+    """
+    Compile a df with annotated session files.
+    :param bdir: Parent dir, under which there is a subdir for each model, and within that dir are the
+        JSON session files for each query type. The name of the session file is the same as that of the
+        input samples file (from ".../Data/Counterfactuals/"), except it ends in "-k.json" if the query
+        mode was "Closed World" (see `get_is_closed_world()` below).
+    :return: the dataframe
+    """
 
+    # Parsers for the session file name, to extract various attributes.
     # ----
     def get_query_type(sfile_):
         qt = os.path.basename(sfile_).split("_")[0]
@@ -813,7 +833,7 @@ def read_all_session_files(bdir = "../Data/Sessions/Latest") -> pd.DataFrame:
 
     all_files = glob.glob(f"{bdir}/*o*/*.json")
 
-    # Column names same as in `summarize_counterfactual_metrics`
+    # Column names as expected in `summarize_counterfactual_metrics_bs`
     df = pd.DataFrame.from_records([(get_query_type(sfile), get_is_surface_cf(sfile),
                                      get_pos_neg(sfile), get_is_closed_world(sfile),
                                      get_model(sfile),
@@ -828,9 +848,11 @@ def read_all_session_files(bdir = "../Data/Sessions/Latest") -> pd.DataFrame:
     return df
 
 
-def summarize_counterfactual_metrics_bs(bdir: str = "../Data/Sessions/Latest"):
+def summarize_counterfactual_metrics_bs(bdir: str = "../Data/Sessions"):
     """
-    Use bootstrapping to compute mean and low/high error bars
+    Compile grouped metrics, as described in the paper in
+        "Table VI: GROUPED ACCURACIES FOR COUNTERFACTUALS, SHOWING TRENDS."
+    Use bootstrapping to compute mean and low/high error bars from a single saved run of a model on the cf sample files.
     """
 
     print("# Bootstrapped Metrics for Groups")
@@ -964,10 +986,10 @@ def pp_bs_stats(hdg: str, df: pd.DataFrame):
 #
 # [Python]$ python -m drugmechcf.exp.cfvariances {add_link | edit_link | ...}  [-m MODEL]
 #
-# e.g. (executed from `$PROJDIR/src/`):
-# [Python]$ python -m drugmechcf.exp.cfvariances ../Data/Sessions/Latest/Variances/opts_change_open.json    \
-#               ../Data/Sessions/Latest/Variances/runs_change_open.json  \
-#               2>&1 | tee ../Data/Sessions/Latest/Variances/log_change_open.txt
+# e.g. (as executed from `$PROJDIR/src/`):
+# [Python]$ python -m drugmechcf.exp.cfvariances edit_link ../Data/Sessions/Variances/opt_change_open.json    \
+#               ../Data/Sessions/Variances/runs_change_open.json  \
+#               2>&1 | tee ../Data/Sessions/Variances/log_change_open.txt
 #
 
 if __name__ == "__main__":
@@ -1014,7 +1036,7 @@ if __name__ == "__main__":
     _sub_cmd_parser = _subparsers.add_parser('summarize',
                                              help="Summarize accuracy metric Groups from Excel sheet.")
     _sub_cmd_parser.add_argument('base_dir', type=str, nargs="?",
-                                 default="../Data/Sessions/Latest",
+                                 default="../Data/Sessions",
                                  help="Input JSON files containing multi-run session.")
 
     # ...

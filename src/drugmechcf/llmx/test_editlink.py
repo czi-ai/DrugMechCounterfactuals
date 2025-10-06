@@ -148,12 +148,17 @@ class TestEditLink:
                  # Params for OpenAI client
                  model_key: str = "o3-mini",
                  reasoning_effort: str = "medium",
-                 timeout_secs: int = 60,
+                 seed: int = 42,
                  temperature: float = 1.0,
+                 extra_body: dict = None,
+                 # ... for vllm-served LLMs
+                 api_key: str = None,
+                 base_url: str = None,
+                 #
+                 timeout_secs: int = 60,
                  use_flex_service_tier: bool = True,
                  #
                  # Params for Multi-threading
-                 seed: int = 42,
                  n_worker_threads: int = 32,
                  #
                  # Params for PromptBuilder
@@ -165,13 +170,15 @@ class TestEditLink:
         self.llm_opts = OpenAICompletionOpts(model=MODEL_KEYS.get(model_key, model_key),
                                              reasoning_effort=reasoning_effort,
                                              seed=seed,
-                                             temperature=temperature)
+                                             temperature=temperature,
+                                             extra_body=extra_body)
 
         self.timeout_secs = timeout_secs
 
-        if use_flex_service_tier and not OpenAICompletionClient.can_use_flex_service_tier(self.llm_opts):
-            use_flex_service_tier = False
         self.use_flex_service_tier = use_flex_service_tier
+
+        self.api_key = api_key
+        self.base_url = base_url
 
         self.n_worker_threads = n_worker_threads
 
@@ -191,6 +198,8 @@ class TestEditLink:
 
     def create_llm_client(self) -> OpenAICompletionClient:
         llm_client = OpenAICompletionClient(self.llm_opts,
+                                            api_key=self.api_key,
+                                            base_url=self.base_url,
                                             timeout_secs=self.timeout_secs,
                                             use_flex_service_tier=self.use_flex_service_tier)
 
@@ -1097,8 +1106,13 @@ def test_editlink_batch(samples_data_file: str,
                         *,
                         model_key: str = "o3-mini",
                         # reasoning_effort: str = "medium",
-                        # timeout_secs: int = 60,
                         # temperature: float = 1.0,
+                        #
+                        api_key: str = None,
+                        base_url: str = None,
+                        #
+                        n_worker_threads: int = 32,
+                        timeout_secs: int = 60,
                         #
                         prompt_version: int = 0,
                         insert_known_moas: bool = False,
@@ -1108,21 +1122,30 @@ def test_editlink_batch(samples_data_file: str,
                         add_unknown_response_opt: bool = False,
                         #
                         no_llm=False,
+                        #
+                        max_samples=None,
                         ):
 
     pp_funcargs(test_editlink_batch)
 
-    global DEBUG_NO_LLM
+    global DEBUG_NO_LLM, MAX_TEST_SAMPLES
 
     DEBUG_NO_LLM = no_llm
+
+    if max_samples:
+        MAX_TEST_SAMPLES = max_samples
 
     if model_key is None:
         model_key = "o3-mini"
 
     tester = TestEditLink(model_key=model_key,
+                          api_key=api_key,
+                          base_url=base_url,
                           prompt_version=prompt_version,
                           insert_known_moas=insert_known_moas,
                           add_unknown_response_opt=add_unknown_response_opt,
+                          n_worker_threads=n_worker_threads,
+                          timeout_secs=timeout_secs,
                           )
     tester.test_batch(samples_data_file,
                       output_json_file,
@@ -1155,11 +1178,11 @@ def show_globals():
 # Examples (executed from `$PROJDIR/src/`):
 #
 # [Python]$ python -m drugmechcf.llmx.test_editlink batch ../Data/Counterfactuals/change_pos_dpi_r250.json  \
-#                       ../Data/Sessions/EditLink/Latest/o3-mini/change_pos_dpi_r250.json        \
-#                       2>&1 | tee ../Data/Sessions/EditLink/Latest/o3-mini/change_pos_dpi_r250_log.txt
+#                       ../Data/Sessions/o3-mini/change_pos_dpi_r250.json        \
+#                       2>&1 | tee ../Data/Sessions/o3-mini/change_pos_dpi_r250_log.txt
 #
-# [Python]$ python -m drugmechcf.llmx.test_editlink attrib_metrics ../Data/Sessions/Latest/*/*_pos_ppi_r250.json \
-#                       2>&1 | tee ../Data/Sessions/Latest/attrib_report_pos_ppi.txt
+# [Python]$ python -m drugmechcf.llmx.test_editlink attrib_metrics ../Data/Sessions/*/*/*_pos_ppi_r250.json \
+#                       2>&1 | tee ../Data/Sessions/attrib_report_pos_ppi.txt
 #
 
 if __name__ == "__main__":
@@ -1190,7 +1213,7 @@ if __name__ == "__main__":
     _sub_cmd_parser.add_argument('-u', '--add_unknown_response_opt', action='store_true',
                                  help="Add 'Unknown' to the response options.")
     _sub_cmd_parser.add_argument('-k', '--insert_known_moas', action='store_true',
-                                 help="Insert Known MoAs in the prompt.")
+                                 help="Insert Known MoAs in the prompt (Closed-world setting).")
     #
     _sub_cmd_parser.add_argument('-f', '--show_full_prompt', action='store_true',
                                  help="Show the full LLM prompt.")

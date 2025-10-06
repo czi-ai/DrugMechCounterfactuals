@@ -2,18 +2,73 @@
 
 This is a release of the Drug Mechanisms Counterfactuals Dataset, developed for evaluating Large Language Models on their ability to recall and reason about drug mechanisms.
 
-The dataset is described in our accompanying paper ...
+The dataset is described in our accompanying paper published in FLLM 2025, and also available as a [preprint](...).
+
+The dataset and related code is available for use under the [MIT license](LICENSE).
 
 
-## Setup
+## Overview
 
-... TBD ...
+### The Dataset
+
+The counterfactual queries, and the related factual queries, are available as JSON files in the `Data/Counterfactuals` sub-directory. See [this README file](Data/Counterfactuals/README.txt).
+
+The counterfactual queries are derived from [DrugMechDB](https://github.com/SuLab/DrugMechDB); using the Add-Link queries, and any Closed World queries (where the prompt includes information about relevant drug mechanisms), requires downloading DrugMechDB. See [this README file](Data/README.txt).
+
+[DrugMechDB](https://github.com/SuLab/DrugMechDB) is also required for the factual queries used in the accompanying paper. The code also allows you to create your own factual queries, for which both [PrimeKG](https://zitniklab.hms.harvard.edu/projects/PrimeKG/) and [MONDO](https://mondo.monarchinitiative.org) are also required. See [this README file](Data/README.txt) for the needed files.
+
+
+### Setup for the Code
+
+Python code for the evaluation framework can be found under the `src/` sub-directory. Requirements for using the code are listed in `requirements.txt`. The code has been tested with Python version 3.11.5, but should also work with more recent versions.
+
+As an example setup for using the code (using the environment variable `PROJDIR` to point to the path where DrugMechCounterfactuals has been cloned, e.g. `PROJDIR=/Users/Me/Projects/DrugMechCounterfactuals`):
+
+1. Create a virtual environment, e.g. 
+
+	```
+	$ cd $PROJDIR
+	$ python -m venv --system-site-packages dmcf
+	$ source dmcf/bin/activate
+	```
+	
+2. Install the requirements, e.g.
+
+	```
+	(dmcf) $ cd $PROJDIR
+	(dmcf) $ pip install -r requirements.txt
+	```
+
+3. Invoke the appropriate Python scripts from the `src` sub-directory. For example, to pretty-print samples from the Add-Link positives surface-counterfactuals query set:
+
+	```
+	(dmcf) $ cd $PROJDIR/src
+	(dmcf) $ python -m drugmechcf.data.cfdata examples ../Data/Counterfactuals/AddLink_pos_dpi_r1k.json
+	```
+
+### For More Information
+
+Please consult the following documents for a more detailed description of the Dataset and the Evaluation Framework:
+
+* [The dataset](Docs/The-Dataset.md)
+* [The Evaluation Framework](Docs/Evaluation-Framework.md)
+* [How to test new models on the dataset](Docs/Testing-New-LLMs.md)
 
 
 ## How to cite
 
-... TBD ...
-
+```
+@inproceedings{DrugMechCounterfactuals,
+  author = {Sunil Mohan and Theofanis Karaletsos},
+  title = {How Well Does {ChatGPT} Understand Drug Mechanisms? A Knowledge + Reasoning Evaluation},
+  booktitle = {3rd International Conference on Foundation and Large Language Models},
+  series = {FLLM 2025},
+  year = {2025},
+  pages = {},
+  doi = {},
+  publisher = {IEEE},
+}
+```
 
 ## Code of Conduct
 

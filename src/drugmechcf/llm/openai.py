@@ -126,6 +126,12 @@ class OpenAICompletionOpts(ValidatedDataclass):
     Alternative parameter is 'temperature'.
     """
 
+    extra_body: dict = None
+    """
+    For passing additional args, e.g. as needed for LLMs served using `vllm`.
+    See: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+    """
+
     def as_params_dict(self):
         skip_flds = ["optsdir"]
         # 'reasoning_effort' is not a valid param for 4o models.
@@ -195,6 +201,9 @@ class OpenAICompletionClient:
         2. For project-specific API keys, you do not need to set the project (or env var OPENAI_PROJECT_ID).
            If you do, then make sure it is the Project ID (which looks something like 'Proj_ABCxyz...') and
            *not* the Project Name.
+        3. For querying LLMs served by `vllm`, provide args:
+                - `api_key` (or set env var OPENAI_API_KEY appropriately)
+                - `base_url`, e.g. "http://localhost:8000/v1"
     """
 
     # Static member, counts nbr LLM calls across threads, in `self._execute_llm()`.
@@ -202,15 +211,25 @@ class OpenAICompletionClient:
     CallCounter = ThreadSafeCounter()
 
     def __init__(self, opts: Union[str, OpenAICompletionOpts] = None,
+                 *,
+                 api_key: str = None,
                  timeout_secs: int = None,
                  use_flex_service_tier: bool = False,
+                 base_url: str = None,
                  ):
         """
 
         :param opts:  OpenAICompletionOpts
+
+        :param api_key:
+            If left unspecified, this will be retrieved from the env var OPENAI_API_KEY.
+            If specified, the env var is not checked. Can use this arg for VLLM-served models,
+                e.g. api_key = "EMPTY".
+
         :param timeout_secs: Timeout in seconds. Default is 10 minutes.
             IF a call to the OpenAI client takes longer than this time
             THEN it will terminate with the exception: `openai.APITimeoutError`
+
         :param use_flex_service_tier:
             IF True THEN
                 "provides significantly lower costs for Chat Completions or Responses requests
@@ -219,6 +238,10 @@ class OpenAICompletionClient:
                  data enrichment, or asynchronous workloads."
             ref: https://platform.openai.com/docs/guides/flex-processing?api-mode=chat
             NOTE - currently (June 10, 2025) only for models: o3, o4-mini
+
+        :param base_url:
+            For OpenAI models, leave unspecified.
+            For VLLM-served models, example URL is "http://localhost:8000/v1".
         """
 
         if opts is None:
@@ -233,11 +256,12 @@ class OpenAICompletionClient:
             if not self.can_use_flex_service_tier(self.opts):
                 self.use_flex_service_tier = False
 
-        try:
-            api_key = os.environ["OPENAI_API_KEY"]
-        except KeyError:
-            raise KeyError("Environment variable 'OPENAI_API_KEY' not found."
-                           "Please put your OpenAI API Key in this environment variable.")
+        if api_key is None:
+            try:
+                api_key = os.environ["OPENAI_API_KEY"]
+            except KeyError:
+                raise KeyError("Environment variable 'OPENAI_API_KEY' not found."
+                               "Please put your OpenAI API Key in this environment variable.")
 
         if INCLUDE_PROJECT_ID:
             try:
@@ -246,10 +270,10 @@ class OpenAICompletionClient:
                 raise KeyError("Environment variable 'OPENAI_PROJECT_ID' not found."
                                "Please put your OpenAI Project-ID in this environment variable.")
 
-            self.client = OpenAI(api_key=api_key, project=project_id, timeout=timeout_secs)
+            self.client = OpenAI(api_key=api_key, project=project_id, timeout=timeout_secs, base_url=base_url)
 
         else:
-            self.client = OpenAI(api_key=api_key, timeout=timeout_secs)
+            self.client = OpenAI(api_key=api_key, timeout=timeout_secs, base_url=base_url)
 
         # Where client full response is cached
         self.last_response = None
@@ -367,11 +391,15 @@ def get_exp_client(temperature: float = 1.0, model = "o1-preview-2024-09-12") ->
 
 
 def get_openai_client(*,
-                         model_key: str = None,
-                         reasoning_effort: str = "medium",
-                         use_flex_service_tier: bool = False,
-                         timeout_secs: int = 600,
-                         temperature: float = 1.0) -> OpenAICompletionClient:
+                      model_key: str = None,
+                      reasoning_effort: str = "medium",
+                      use_flex_service_tier: bool = False,
+                      timeout_secs: int = 600,
+                      temperature: float = 1.0,
+                      # ... for vllm-served LLMs
+                      api_key: str = None,
+                      base_url: str = None,
+                      ) -> OpenAICompletionClient:
     """
     Allows easy configuration of params relevant to reasoning models.
 
@@ -383,6 +411,10 @@ def get_openai_client(*,
              in exchange for slower response times and occasional resource unavailability.
     :param timeout_secs: OpenAI's Default value is 10 minutes.
     :param temperature: OpenAI's Default is 1.0
+
+    :param api_key:
+    :param base_url:
+        These two params are passed on to `OpenAICompletionClient`. Used for connecting to vllm-hosted LLMs.
     """
 
     assert reasoning_effort in ["low", "medium", "high"]
@@ -398,14 +430,16 @@ def get_openai_client(*,
         timeout_secs = 240
 
     if model[:2] in ["o3", "o1"] and temperature != 1.0:
-        print(f"*** WARNING (get_openai_client): setting temperature to 1.0 for reasonin model {model_key=}, {model=}.")
+        print(f"*** WARNING (get_openai_client): setting temperature to 1.0 for reasoning model {model_key=},"
+              f" {model=}.")
         temperature = 1.0
 
     opts = OpenAICompletionOpts(model=model,
                                 reasoning_effort=reasoning_effort,
                                 temperature=temperature)
 
-    client = OpenAICompletionClient(opts, use_flex_service_tier=use_flex_service_tier, timeout_secs=timeout_secs)
+    client = OpenAICompletionClient(opts, use_flex_service_tier=use_flex_service_tier, timeout_secs=timeout_secs,
+                                    api_key=api_key, base_url=base_url)
 
     return client
 

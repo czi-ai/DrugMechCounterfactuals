@@ -11,9 +11,12 @@ import os
 from typing import Any
 
 from drugmechcf.data.drugmechdb import DrugMechDB, load_drugmechdb
+from drugmechcf.data.primekg import PrimeKG, RELATION_CONTRA_INDICATION, load_primekg
+
 from drugmechcf.kgproc.addlink import create_new_moa_add_link
+
 from drugmechcf.llm.prompt_types import EditLinkInfo
-from drugmechcf.llmx.prompts_common import get_drugmechdb_moa_for_prompt
+from drugmechcf.llmx.prompts_common import (get_drugmechdb_moa_for_prompt)
 from drugmechcf.llmx.test_addlink import AddLinkTask
 from drugmechcf.llmx.test_editlink import EditLinkTask
 
@@ -64,6 +67,28 @@ def pp_indented_moa(moa, indent="    "):
     return
 
 
+def pp_sample_factual(sdict: dict[str, Any], drugmechdb: DrugMechDB, pkg: PrimeKG):
+
+    print(f"Drug: {sdict['drug_name']} ({sdict['drug_id']})")
+    print(f"Disease: {sdict['disease_name']} ({sdict['disease_id']})")
+
+    if sdict["is_negative_sample"]:
+
+        print("Negative sample")
+        if pkg.has_edge(sdict['drug_id'], sdict['disease_id'], RELATION_CONTRA_INDICATION):
+            print("  - Contra-indicated")
+        else:
+            print("  - No relation between Drug and Disease")
+
+    else:
+
+        moa = drugmechdb.get_indication_graph_with_id(sdict["moa_id"])
+        print("Expected MoA:")
+        pp_indented_moa(moa)
+
+    return
+
+
 def pp_sample_addlink(task: AddLinkTask):
 
     print(f"Drug: {task.drug_name} ({task.drug_id})")
@@ -75,7 +100,7 @@ def pp_sample_addlink(task: AddLinkTask):
           f"{eli.target_node_type}: {eli.target_node_name} ({eli.target_node})")
 
     if task.is_negative_sample:
-        print("Negative sample")
+        print("Negative sample from PrimeKG")
     else:
         print("Expected (synthesized) MoA:")
         pp_indented_moa(task.moa)
@@ -98,14 +123,18 @@ def pp_sample_editlink(task: EditLinkTask):
     return
 
 
-def pp_samples(cf_samples_file: str, count=5):
+def pp_samples(cf_samples_file: str, count=5, start=0):
     """
     Read a counterfactuals samples file and pprint some samples.
     :param cf_samples_file: Path to counterfactual samples JSON file
     :param count: How many samples to pprint
+    :param start: Index from where to start printing samples
     """
 
+    print("Loading data ...", flush=True)
+
     drugmechdb = load_drugmechdb()
+    pkg = None
 
     with open(cf_samples_file) as jf:
         sdata = json.load(jf)
@@ -115,29 +144,38 @@ def pp_samples(cf_samples_file: str, count=5):
     query_type = sdata[0]["query_type"]
     is_negative_sample = sdata[0]["is_negative_sample"]
 
-    src_node_type_cnts = Counter(s["edit_link_info"]["source_node_type"] for s in sdata)
-    is_surface_level = set(src_node_type_cnts.keys()) <= {"Drug", "ChemicalSubstance"}
+    is_factual = query_type == "known_moa"
+
+    if is_factual and is_negative_sample:
+        pkg = load_primekg()
 
     print()
     print("Counterfactuals File:", os.path.basename(cf_samples_file))
     print(f"    query_type = {query_type}")
-    print(f"    is_surface_level = {is_surface_level}")
+
+    if not is_factual:
+        src_node_type_cnts = Counter(s["edit_link_info"]["source_node_type"] for s in sdata)
+        is_surface_level = set(src_node_type_cnts.keys()) <= {"Drug", "ChemicalSubstance"}
+        print(f"    is_surface_level = {is_surface_level}")
+
     print(f"    is_negative_sample = {is_negative_sample}")
     print(f"    n_samples = {len(sdata):,d}")
     print()
 
     print()
-    for i, sample_data in enumerate(sdata[:count], start=1):
-        task = create_sample_task(sample_data, drugmechdb)
-
+    for i, sample_data in enumerate(sdata[start : start + count], start=1):
         pp_underlined_hdg(f"Sample {i}:")
 
-        if task.query_type == "ADD_LINK":
-            pp_sample_addlink(task)
+        if is_factual:
+            pp_sample_factual(sample_data, drugmechdb, pkg)
         else:
-            pp_sample_editlink(task)
+            task = create_sample_task(sample_data, drugmechdb)
+            if task.query_type == "ADD_LINK":
+                pp_sample_addlink(task)
+            else:
+                pp_sample_editlink(task)
 
-        print("===\n")
+        print("=======\n")
 
     return
 
@@ -169,10 +207,12 @@ if __name__ == "__main__":
     # ... examples
     _sub_cmd_parser = _subparsers.add_parser('examples',
                                              help="Print summary and some samples from a CF Samples file.")
+    _sub_cmd_parser.add_argument('-s', '--start', type=int, default=0,
+                                 help="Index of first example.")
     _sub_cmd_parser.add_argument('-c', '--count', type=int, default=5,
                                  help="Max nbr of examples.")
     _sub_cmd_parser.add_argument('cf_samples_file',
-                                 help="Path to counterfactual samples JSON file")
+                                 help="Path to query samples JSON file")
 
     # ...
 
@@ -186,7 +226,7 @@ if __name__ == "__main__":
 
     if _args.subcmd == 'examples':
 
-        pp_samples(_args.cf_samples_file, _args.count)
+        pp_samples(_args.cf_samples_file, _args.count, start=_args.start)
 
     else:
 

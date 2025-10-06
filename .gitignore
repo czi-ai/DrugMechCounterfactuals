@@ -17,3 +17,7 @@ __pycache__/
 # ... except ...
 !/Data/README*
 !/Data/Counterfactuals
+!/Data/Sessions
+#
+/Data/Sessions/*
+!/Data/Sessions/Variances

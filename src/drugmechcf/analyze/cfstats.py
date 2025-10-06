@@ -79,7 +79,7 @@ def pp_data_file_stats(cfdict: dict[str, Any], hdg_prefx: str = None):
 
 
 def analyze_data_files(data_dir: str = "../Data/Counterfactuals"):
-    data_files = sorted(glob.glob(f"{data_dir}/*.json"))
+    data_files = [f for f in sorted(glob.glob(f"{data_dir}/*.json")) if not f.startswith("factuals")]
 
     print()
     print("nbr Data files found =", len(data_files))

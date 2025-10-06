@@ -16,7 +16,7 @@ from drugmechcf.llm.prompt_types import DrugDiseasePromptInfo, QueryType, Prompt
 from drugmechcf.llm.drugmechdb_prompt_builder import DrugMechPromptBuilder
 from drugmechcf.llm.primekg_prompt_builder import PrimeKGPromptBuilder
 
-from drugmechcf.llm.openai import CompletionOutput, OpenAICompletionClient
+from drugmechcf.llm.openai import CompletionOutput, get_openai_client, OpenAICompletionClient
 from drugmechcf.graphmatch.graphmatcher import GraphMatchScore, BasicGraphMatcher
 from drugmechcf.llm.test_common import ENTITY_TYPE_EQUIVALENCES, test_moa_match, pprint_accumulated_metrics
 
@@ -35,6 +35,16 @@ DEBUG_NO_LLM = False
 # -----------------------------------------------------------------------------
 
 
+def get_default_llm_client(**llmparams) -> OpenAICompletionClient:
+    """
+    Return the `OpenAICompletionClient` that will be tested on Factual knowledge of MoAs.
+    The default model (i.e. with `llmparams`=None) is a gpt-4o model.
+    Provide args (see `drugmechcf.llm.openai.get_openai_client()`) or modify code to test other models.
+    """
+    llm_client = get_openai_client(**llmparams)
+    return llm_client
+
+
 def test_positives_batch(count: int = 10,
                          randomize: bool = False,
                          seed: int = 42,
@@ -44,7 +54,10 @@ def test_positives_batch(count: int = 10,
                          prompt_version: int = 0,
                          single_llm_session: bool = False,
                          debug_no_llm: bool = False,
-                         json_file: str = None):
+                         json_file: str = None,
+                         pos_samples_file: str = None,
+                         **llmparams
+                         ):
     """
     Compares `count` MoA's from DrugMechDB against ChatGPT.
 
@@ -60,6 +73,14 @@ def test_positives_batch(count: int = 10,
     :param prompt_style: Integer rep of PromptStyle
 
     :param json_file: [opt] Output data to this JSON file
+
+    :param debug_no_llm: [opt] Don't call LLM
+
+    :param pos_samples_file: [opt] File containing positive samples.
+        Otherwise positive samples obtained from DrugMechDB.
+
+    :param **llmparams: [opt] args passed on to `drugmechcf.llm.test_dmdb.get_default_llm_client()`
+        for testing specific LLM models.
     """
 
     pp_funcargs(test_positives_batch)
@@ -84,15 +105,19 @@ def test_positives_batch(count: int = 10,
     drugmechdb = prompt_builder.drugmechdb
 
     if single_llm_session and not debug_no_llm:
-        llm = OpenAICompletionClient()
+        llm = get_default_llm_client(**llmparams)
     else:
         llm = None
 
-    if randomize:
-        rng = np.random.default_rng(seed)
-        dmdb_moa_indices = rng.permutation(drugmechdb.nbr_indications())
+    if pos_samples_file is None:
+        if randomize:
+            rng = np.random.default_rng(seed)
+            dmdb_moa_indices = rng.permutation(drugmechdb.nbr_indications())
+        else:
+            dmdb_moa_indices = np.arange(drugmechdb.nbr_indications())
+
     else:
-        dmdb_moa_indices = np.arange(drugmechdb.nbr_indications())
+        dmdb_moa_indices = get_dmdb_indices_from_samples_file(pos_samples_file, drugmechdb)
 
     prompt_examples = prompt_builder.get_llm_prompt_example_nodes(QueryType.KNOWN_MOA, prompt_version)
 
@@ -140,11 +165,12 @@ def test_positives_batch(count: int = 10,
                                                                 grmatcher=grmatcher,
                                                                 match_entity_types=match_entity_types,
                                                                 use_etype_equivs=use_etype_equivs,
-                                                                prompt_style=prompt_style,
+                                                                prompt_style=prompt_style,       # type: Ignore
                                                                 prompt_version=prompt_version,
                                                                 n_tested=n_tested + 1,
                                                                 debug_no_llm=debug_no_llm,
-                                                                verbose=True
+                                                                verbose=True,
+                                                                **llmparams
                                                                 )
 
         if prompt_info is None:
@@ -204,6 +230,18 @@ def test_positives_batch(count: int = 10,
     return
 
 
+def get_dmdb_indices_from_samples_file(pos_samples_file: str, drugmechdb) -> list[int]:
+    with open(pos_samples_file) as f:
+        samples = json.load(f)
+
+    assert samples[0]["query_type"] == "known_moa", "Samples file is not for Factuals!"
+    assert not samples[0]["is_negative_sample"], "Samples are not Positive!"
+
+    dmdb_moa_indices = [drugmechdb.moa_id_to_gidx[s["moa_id"]] for s in samples]
+
+    return dmdb_moa_indices
+
+
 def test_moa_llm_match(drug_id: str, disease_id: str,
                        dmdb_moa: MoaGraph = None,
                        prompt_builder: DrugMechPromptBuilder = None,
@@ -218,6 +256,7 @@ def test_moa_llm_match(drug_id: str, disease_id: str,
                        verbose_llm: bool = False,
                        main_heading: str = None,
                        debug_no_llm: bool = False,
+                       **llmparams
                        )\
         -> Tuple[DrugDiseasePromptInfo | None, CompletionOutput | None, GraphMatchScore | None]:
     """
@@ -262,7 +301,7 @@ def test_moa_llm_match(drug_id: str, disease_id: str,
         return prompt_info, None, None
 
     if llm is None:
-        llm = OpenAICompletionClient()
+        llm = get_default_llm_client(**llmparams)
 
     llm_response = llm(user_prompt=prompt_info.full_prompt, verbose=verbose_llm)
 
@@ -309,6 +348,8 @@ def test_negatives_batch(count: int = 10,
                          seed: int = None,
                          json_file: str = None,
                          debug_no_llm: bool = False,
+                         neg_samples_file: str = None,
+                         **llmparams
                          ):
     """
     Compares `count` MoA's from DrugMechDB against ChatGPT.
@@ -324,6 +365,14 @@ def test_negatives_batch(count: int = 10,
     :param seed: Seed to use in np random generator
 
     :param json_file: [opt] Output data to this JSON file
+
+    :param debug_no_llm: [opt] Don't call LLM
+
+    :param neg_samples_file: [opt] File containing negative samples.
+        Otherwise negative samples obtained from PrimeKG.
+
+    :param **llmparams: [opt] args passed on to `drugmechcf.llm.test_dmdb.get_default_llm_client()`
+        for testing specific LLM models.
     """
 
     pp_funcargs(test_negatives_batch)
@@ -346,12 +395,18 @@ def test_negatives_batch(count: int = 10,
 
     n_pairs_from_no_reln = count - n_pairs_from_contra
 
-    # Get extra pairs to account for skips
-    drug_disease_pairs_contra, drug_disease_pairs_no_reln = \
-        get_negative_samples(primekg, int(2.2 * n_pairs_from_contra), int(2.2 * n_pairs_from_no_reln), seed)
-
     print()
-    print("From `get_negative_samples()`:")
+    if neg_samples_file is None:
+        print("From `get_negative_samples()`:")
+        # Get extra pairs to account for skips
+        drug_disease_pairs_contra, drug_disease_pairs_no_reln = \
+            get_negative_samples(primekg, int(2.2 * n_pairs_from_contra), int(2.2 * n_pairs_from_no_reln), seed)
+
+    else:
+        print("From `get_negative_drug_disease_pairs_from_file()`:")
+        drug_disease_pairs_contra, drug_disease_pairs_no_reln = \
+            get_negative_drug_disease_pairs_from_file(neg_samples_file, n_pairs_from_contra, n_pairs_from_no_reln)
+
     print(f"    {len(drug_disease_pairs_contra) = }")
     print(f"    {len(drug_disease_pairs_no_reln) = }")
     print()
@@ -414,11 +469,12 @@ def test_negatives_batch(count: int = 10,
                                                                       primekg_prompt_builder=prompt_builder,
                                                                       drugmechdb_prompt_builder=prompt_builder_dmdb,
                                                                       llm=None,
-                                                                      prompt_style=prompt_style,
+                                                                      prompt_style=prompt_style,       # type: Ignore
                                                                       prompt_version=prompt_version,
                                                                       n_tested=n_tested + 1,
                                                                       debug_no_llm=debug_no_llm,
-                                                                      verbose=True
+                                                                      verbose=True,
+                                                                      **llmparams
                                                                       )
 
             if prompt_info is None:
@@ -483,6 +539,24 @@ def test_negatives_batch(count: int = 10,
     return
 
 
+def get_negative_drug_disease_pairs_from_file(neg_samples_file: str, n_pairs_from_contra, n_pairs_from_no_reln):
+    with open(neg_samples_file) as f:
+        samples = json.load(f)
+
+    assert samples[0]["query_type"] == "known_moa", "Samples file is not for Factuals!"
+    assert samples[0]["is_negative_sample"], "Samples are not Negative!"
+
+    drug_disease_pairs = [(s["drug_id"], s["disease_id"]) for s in samples]
+
+    # First half the samples in the file are from contra and the remaining from no_reln
+    n_samples_half = len(drug_disease_pairs) // 2
+    n_pairs_from_contra = min(n_pairs_from_contra, n_samples_half)
+    n_pairs_from_no_reln = min(n_pairs_from_no_reln, n_samples_half)
+
+    return (drug_disease_pairs[:n_pairs_from_contra],
+            drug_disease_pairs[n_samples_half:n_samples_half + n_pairs_from_no_reln])
+
+
 def get_negative_samples(primekg: PrimeKG,
                          n_pairs_from_contra: int,
                          n_pairs_from_no_reln: int,
@@ -530,7 +604,8 @@ def test_negative_sample(drug_id: str, disease_id: str,
                          prompt_version: int = 0,
                          n_tested: int = 0,
                          debug_no_llm: bool = False,
-                         verbose: bool = True
+                         verbose: bool = True,
+                         **llmparams
                          ) \
         -> Tuple[DrugDiseasePromptInfo | None, CompletionOutput | None, GraphMatchScore | None]:
     """
@@ -573,7 +648,7 @@ def test_negative_sample(drug_id: str, disease_id: str,
     # ---[3]--- Query LLM
 
     if llm is None:
-        llm = OpenAICompletionClient()
+        llm = get_default_llm_client(**llmparams)
 
     if grmatcher is None:
         grmatcher = BasicGraphMatcher()
@@ -662,8 +737,11 @@ def test_one_dmdb(drug_id: str, disease_id: str,
 
     prompt_info, llm_response, metrics = \
         test_moa_llm_match(drug_id, disease_id, moa,
-                              prompt_builder=prompt_builder, prompt_style=prompt_style, prompt_version=prompt_version,
-                              use_etype_equivs=use_etype_equivs, verbose=verbose)
+                           prompt_builder=prompt_builder,
+                           prompt_style=prompt_style,       # type: Ignore
+                           prompt_version=prompt_version,
+                           use_etype_equivs=use_etype_equivs,
+                           verbose=verbose)
 
     if verbose:
         pp_underlined_hdg("LLM full prompt:")
@@ -681,14 +759,16 @@ def test_one_dmdb(drug_id: str, disease_id: str,
     return
 
 
-def get_session_samples_data(session_json_file: str) -> List[Tuple[bool, str, int, str, str, str, str]]:
+def get_session_samples_data(session_json_file: str) -> List[Tuple[bool, str, int, str, str, str, str, str, str]]:
     """
     Extract session samples data from session JSON file.
 
     :return:
         - Samples: List[ (is_negative_sample,
                           prompt_style, prompt_version, source_kg,
-                          moa_id, drug_id, disease_id),
+                          moa_id,
+                          drug_id, disease_id,
+                          drug_name, disease_name),
                         ... ]
     """
 
@@ -698,7 +778,8 @@ def get_session_samples_data(session_json_file: str) -> List[Tuple[bool, str, in
     samples = [(spi.get("is_negative_sample", False),
                 spi["prompt_style"], spi["prompt_version"], spi["source_kg"],
                 spi["moa_id"],
-                spi["drug_id"], spi["disease_id"]
+                spi["drug_id"], spi["disease_id"],
+                spi["drug_name"], spi["disease_name"]
                 )
                for spi in map(lambda s: s["prompt_info"],
                               jdict["session"])]
@@ -713,24 +794,34 @@ def get_session_samples_data(session_json_file: str) -> List[Tuple[bool, str, in
 # To run
 # ------
 #
-# [Python]$ python -m drugmechcf.llm.test_dmdb {test | batch | ...}
+# [Python]$ python -m drugmechcf.llm.test_dmdb {test | positives | ...}
 #
 # --- e.g. Testing +ive samples (executed from `$PROJDIR/src/`):
 #
-# $ python -m drugmechcf.llm.test_dmdb batch -r -c 100 -p 2 -j ../Data/Sessions/KnownMoa/pos_p2_r100.json 2>&1 \
-#           | tee ../Data/Sessions/KnownMoa/pos_p2_r100.txt
-# $ python -m drugmechcf.llm.test_dmdb batch -r -c 100 -p 2 -s NAMED_DISEASE \
-#              -j ../Data/Sessions/KnownMoa/pos_p2_r100_named.json 2>&1 \
-#           | tee ../Data/Sessions/KnownMoa/pos_p2_r100_named.txt
-# $ python -m drugmechcf.llm.test_dmdb batch -r -c 100 -p 2 -s NAMED_DISEASE_WITH_ALL_ASSOCIATIONS \
-#              -j ../Data/Sessions/KnownMoa/pos_p2_r100_named_assoc.json 2>&1 \
-#           | tee ../Data/Sessions/KnownMoa/pos_p2_r100_named_assoc.txt
+# $ python -m drugmechcf.llm.test_dmdb positives -c 1000 -p 2 \
+#           -f ../Data/Counterfactuals/factuals_pos_r1k.json \
+#           -j ../Data/Sessions/Factuals/pos_p2_f1k.json \
+#           2>&1 | tee ../Data/Sessions/Factuals/pos_p2_f1k.txt
+#
+# $ python -m drugmechcf.llm.test_dmdb positives -r -c 100 -p 2 -j ../Data/Sessions/Factuals/pos_p2_r100.json 2>&1 \
+#           | tee ../Data/Sessions/Factuals/pos_p2_r100.txt
+# $ python -m drugmechcf.llm.test_dmdb positives -r -c 100 -p 2 -s NAMED_DISEASE \
+#              -j ../Data/Sessions/Factuals/pos_p2_r100_named.json 2>&1 \
+#           | tee ../Data/Sessions/Factuals/pos_p2_r100_named.txt
+# $ python -m drugmechcf.llm.test_dmdb positives -r -c 100 -p 2 -s NAMED_DISEASE_WITH_ALL_ASSOCIATIONS \
+#              -j ../Data/Sessions/Factuals/pos_p2_r100_named_assoc.json 2>&1 \
+#           | tee ../Data/Sessions/Factuals/pos_p2_r100_named_assoc.txt
 #
 # --- e.g. Testing -ive samples (executed from `$PROJDIR/src/`):
 #
+# $ python -m drugmechcf.llm.test_dmdb negs -c 1000 -p 2 --contras \
+#              -f ../Data/Counterfactuals/factuals_neg_r1k.json \
+#              -j ../Data/Sessions/Factuals/neg_p2_f1k_contras.json \
+#           2>&1 | tee ../Data/Sessions/Factuals/neg_p2_f1k_contras.txt
+#
 # $ python -m drugmechcf.llm.test_dmdb negs -c 100 --seed 42 -p 2 --contras \
-#              -j ../Data/Sessions/KnownMoa/neg_p2_100_contras.json 2>&1 \
-#           | tee ../Data/Sessions/KnownMoa/neg_p2_100_contras.txt
+#              -j ../Data/Sessions/Factuals/neg_p2_100_contras.json \
+#           2>&1 | tee ../Data/Sessions/Factuals/neg_p2_100_contras.txt
 #
 
 if __name__ == "__main__":
@@ -765,9 +856,9 @@ if __name__ == "__main__":
     _sub_cmd_parser.add_argument('disease_id', type=str,
                                  help="Disease-ID.")
 
-    # ... batch
-    _sub_cmd_parser = _subparsers.add_parser('batch',
-                                        help="Test ChatGPT-4o response match on random selections from DrugMechDB.")
+    # ... positives
+    _sub_cmd_parser = _subparsers.add_parser('positives',
+                                        help="Test ChatGPT-4o response match on factual queries from DrugMechDB.")
     _sub_cmd_parser.add_argument('-j', '--json', type=str,
                                  help="Also write session data to this JSON file.")
     _sub_cmd_parser.add_argument('-c', '--count', type=int, default=1,
@@ -782,6 +873,8 @@ if __name__ == "__main__":
                                  help="Test a random selection of MoA's. Otherwise it is the first `n`.")
     _sub_cmd_parser.add_argument('--dont_match_entity_types', action='store_true',
                                  help="Dont require EntityType to match when matching nodes. Otherwise it is required.")
+    _sub_cmd_parser.add_argument('-f', '--samples_file', type=str,
+                                 help="JSON file containing positive samples.")
 
     # ... negs
     _sub_cmd_parser = _subparsers.add_parser('negs',
@@ -800,6 +893,8 @@ if __name__ == "__main__":
                                  help="Seed for random nbr generator, for replicability.")
     _sub_cmd_parser.add_argument('--contras', action='store_true',
                                  help="Include contra-indications in -ive samples?")
+    _sub_cmd_parser.add_argument('-f', '--samples_file', type=str,
+                                 help="JSON file containing negative samples.")
 
     # ...
 
@@ -821,7 +916,7 @@ if __name__ == "__main__":
                       # verbose=_args.verbose,
                       )
 
-    elif _args.subcmd == 'batch':
+    elif _args.subcmd == 'positives':
 
         test_positives_batch(_args.count,
                              randomize=_args.random,
@@ -830,6 +925,7 @@ if __name__ == "__main__":
                              prompt_style=_args.prompt_style,
                              prompt_version=_args.prompt_version,
                              json_file=_args.json,
+                             pos_samples_file=_args.samples_file,
                              )
 
     elif _args.subcmd == 'negs':
@@ -840,6 +936,7 @@ if __name__ == "__main__":
                              prompt_version=_args.prompt_version,
                              seed=_args.seed,
                              json_file=_args.json,
+                             neg_samples_file=_args.samples_file,
                              )
 
     else:

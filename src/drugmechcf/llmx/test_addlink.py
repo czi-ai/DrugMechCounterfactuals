@@ -122,14 +122,19 @@ class TestAddLink:
                  # Params for OpenAI client
                  model_key: str = "o3-mini",
                  reasoning_effort: str = "medium",
-                 timeout_secs: int = 60,
-                 temperature: float = 1.0,
-                 use_flex_service_tier: bool = True,
-
-                 # Params for Multi-threading
                  seed: int = 42,
+                 temperature: float = 1.0,
+                 extra_body: dict = None,
+                 # ... for vllm-served LLMs
+                 api_key: str = None,
+                 base_url: str = None,
+                 #
+                 timeout_secs: int = 60,
+                 use_flex_service_tier: bool = True,
+                 #
+                 # Params for Multi-threading
                  n_worker_threads: int = 32,
-
+                 #
                  # Params for PromptBuilder
                  prompt_version: int = 0,
                  include_examples: bool = True,
@@ -139,13 +144,15 @@ class TestAddLink:
         self.llm_opts = OpenAICompletionOpts(model=MODEL_KEYS.get(model_key, model_key),
                                              reasoning_effort=reasoning_effort,
                                              seed=seed,
-                                             temperature=temperature)
+                                             temperature=temperature,
+                                             extra_body=extra_body)
 
         self.timeout_secs = timeout_secs
 
-        if use_flex_service_tier and not OpenAICompletionClient.can_use_flex_service_tier(self.llm_opts):
-            use_flex_service_tier = False
         self.use_flex_service_tier = use_flex_service_tier
+
+        self.api_key = api_key
+        self.base_url = base_url
 
         self.n_worker_threads = n_worker_threads
 
@@ -170,6 +177,15 @@ class TestAddLink:
         response_opts = dict(YES="YES.", NO=self.prompt_builder.get_negative_response_text())
         self.neg_opts_matcher = OptionsMatcher(response_opts)
         return
+
+    def create_llm_client(self) -> OpenAICompletionClient:
+        llm_client = OpenAICompletionClient(self.llm_opts,
+                                            api_key=self.api_key,
+                                            base_url=self.base_url,
+                                            timeout_secs=self.timeout_secs,
+                                            use_flex_service_tier=self.use_flex_service_tier)
+
+        return llm_client
 
     def create_sample_task(self, sample_data: dict[str, Any]) -> AddLinkTask:
         sample_data = sample_data.copy()
@@ -419,9 +435,7 @@ class TestAddLink:
         if DEBUG_NO_LLM:
             return prompt_info, None, None, None
 
-        llm_client = OpenAICompletionClient(self.llm_opts,
-                                            timeout_secs=self.timeout_secs,
-                                            use_flex_service_tier=self.use_flex_service_tier)
+        llm_client = self.create_llm_client()
 
         llm_response = llm_client(user_prompt=prompt_info.full_prompt)
 
@@ -500,9 +514,7 @@ class TestAddLink:
         if DEBUG_NO_LLM:
             return prompt_info, None, None
 
-        llm_client = OpenAICompletionClient(self.llm_opts,
-                                            timeout_secs=self.timeout_secs,
-                                            use_flex_service_tier=self.use_flex_service_tier)
+        llm_client = self.create_llm_client()
 
         llm_response = llm_client(user_prompt=prompt_info.full_prompt)
 
@@ -696,8 +708,13 @@ def test_addlink_batch(samples_data_file: str,
                        *,
                        model_key: str = "o3-mini",
                        # reasoning_effort: str = "medium",
-                       # timeout_secs: int = 60,
                        # temperature: float = 1.0,
+                       #
+                       api_key: str = None,
+                       base_url: str = None,
+                       #
+                       n_worker_threads: int = 32,
+                       timeout_secs: int = 60,
                        #
                        include_examples: bool = True,
                        insert_known_moas: bool = False,
@@ -707,10 +724,15 @@ def test_addlink_batch(samples_data_file: str,
                        ):
 
     tester = TestAddLink(model_key=model_key,
+                         api_key=api_key,
+                         base_url=base_url,
                          include_examples=include_examples,
                          insert_known_moas=insert_known_moas,
+                         n_worker_threads=n_worker_threads,
+                         timeout_secs=timeout_secs,
                          )
-    tester.test_batch(samples_data_file, output_json_file,
+    tester.test_batch(samples_data_file,
+                      output_json_file,
                       show_full_prompt=show_full_prompt,
                       show_response=show_response,
                       )
@@ -740,8 +762,8 @@ def show_globals():
 # --- e.g. Testing +ive samples (executed from `$PROJDIR/src/`):
 #
 # $ python -m drugmechcf.llmx.test_addlink batch ../Data/Counterfactuals/AddLink_pos_dpi_r1k.json  \
-#           ../Data/Sessions/AddLink/Latest/addlink_pos_dpi.json 500 2>&1  \
-#           | tee ../Data/Sessions/AddLink/Latest/addlink_pos_dpi_log.txt
+#           ../Data/Sessions/o3-mini/addlink_pos_dpi.json 2>&1  \
+#           | tee ../Data/Sessions/o3-mini/addlink_pos_dpi_log.txt
 #
 
 if __name__ == "__main__":
@@ -770,7 +792,7 @@ if __name__ == "__main__":
     _sub_cmd_parser.add_argument('-x', '--dont_include_examples', action='store_true',
                                  help="Do NOT include example queries in the prompt.")
     _sub_cmd_parser.add_argument('-k', '--insert_known_moas', action='store_true',
-                                 help="Insert Known MoAs in the prompt.")
+                                 help="Insert Known MoAs in the prompt (Closed-world setting).")
     #
     _sub_cmd_parser.add_argument('-f', '--show_full_prompt', action='store_true',
                                  help="Show the full LLM prompt.")
