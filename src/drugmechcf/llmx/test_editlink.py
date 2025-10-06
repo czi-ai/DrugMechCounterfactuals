@@ -1178,11 +1178,11 @@ def show_globals():
 # Examples (executed from `$PROJDIR/src/`):
 #
 # [Python]$ python -m drugmechcf.llmx.test_editlink batch ../Data/Counterfactuals/change_pos_dpi_r250.json  \
-#                       ../Data/Sessions/o3-mini/change_pos_dpi_r250.json        \
-#                       2>&1 | tee ../Data/Sessions/o3-mini/change_pos_dpi_r250_log.txt
+#                       ../Data/Sessions/ModelRuns/o3-mini/change_pos_dpi_r250.json        \
+#                       2>&1 | tee ../Data/Sessions/ModelRuns/o3-mini/change_pos_dpi_r250_log.txt
 #
-# [Python]$ python -m drugmechcf.llmx.test_editlink attrib_metrics ../Data/Sessions/*/*/*_pos_ppi_r250.json \
-#                       2>&1 | tee ../Data/Sessions/attrib_report_pos_ppi.txt
+# [Python]$ python -m drugmechcf.llmx.test_editlink attrib_metrics ../Data/Sessions/ModelRuns/*/*_pos_ppi_r250.json \
+#                       2>&1 | tee ../Data/Sessions/ModelRuns/attrib_report_pos_ppi.txt
 #
 
 if __name__ == "__main__":

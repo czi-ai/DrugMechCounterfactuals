@@ -802,7 +802,7 @@ def stratified_bootstrapped_stats(session_files: list[str],
     return bs_stats
 
 
-def read_all_session_files(bdir = "../Data/Sessions") -> pd.DataFrame:
+def read_all_session_files(bdir = "../Data/Sessions/ModelRuns") -> pd.DataFrame:
     """
     Compile a df with annotated session files.
     :param bdir: Parent dir, under which there is a subdir for each model, and within that dir are the
@@ -831,7 +831,8 @@ def read_all_session_files(bdir = "../Data/Sessions") -> pd.DataFrame:
         return sfile_.split("/")[-2]
     # ---
 
-    all_files = glob.glob(f"{bdir}/*o*/*.json")
+    # Path format: {bdir}/{model}/*.json
+    all_files = glob.glob(f"{bdir}/*/*.json")
 
     # Column names as expected in `summarize_counterfactual_metrics_bs`
     df = pd.DataFrame.from_records([(get_query_type(sfile), get_is_surface_cf(sfile),

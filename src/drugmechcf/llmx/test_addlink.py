@@ -762,8 +762,8 @@ def show_globals():
 # --- e.g. Testing +ive samples (executed from `$PROJDIR/src/`):
 #
 # $ python -m drugmechcf.llmx.test_addlink batch ../Data/Counterfactuals/AddLink_pos_dpi_r1k.json  \
-#           ../Data/Sessions/o3-mini/addlink_pos_dpi.json 2>&1  \
-#           | tee ../Data/Sessions/o3-mini/addlink_pos_dpi_log.txt
+#           ../Data/Sessions/ModelRuns/o3-mini/addlink_pos_dpi.json 2>&1  \
+#           | tee ../Data/Sessions/ModelRuns/o3-mini/addlink_pos_dpi_log.txt
 #
 
 if __name__ == "__main__":
