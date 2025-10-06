@@ -1,0 +1,13 @@
+{
+    "args": {
+        "insert_known_moas": true,
+        "model_keys": [
+            "4o",
+            "o3",
+            "o3-mini",
+            "o4-mini"
+        ],
+        "nruns": 5,
+        "data_key": "delete"
+    }
+}
