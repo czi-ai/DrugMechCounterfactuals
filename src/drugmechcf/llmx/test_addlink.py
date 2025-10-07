@@ -28,7 +28,8 @@ from drugmechcf.llmx.prompts_addlink import PromptBuilder
 
 from drugmechcf.kgproc.addlink import create_new_moa_add_link
 
-from drugmechcf.utils.misc import NpEncoder, buffered_stdout, pp_funcargs, pp_underlined_hdg, pp_dict
+from drugmechcf.utils.misc import (NpEncoder, buffered_stdout, pp_funcargs, pp_underlined_hdg,
+                                   pp_dict, check_output_file_dir)
 
 
 # -----------------------------------------------------------------------------
@@ -217,6 +218,9 @@ class TestAddLink:
 
         pp_underlined_hdg(f"AddLink Batch Test", linechar='~', overline=True)
         pp_funcargs(self.test_batch)
+
+        if output_json_file is not None:
+            check_output_file_dir(output_json_file)
 
         self.show_full_prompt = show_full_prompt
         self.show_response = show_response

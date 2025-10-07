@@ -176,6 +176,49 @@ def get_temp_dir():
     return temp_dir
 
 
+def check_output_file_dir(file_path,
+                          *,
+                          error_if_exists=False,
+                          create_dir=True,
+                          create_parents=True,
+                          verbose=True):
+    """
+    Check if `dir_path` exists as a directory, and if not, create it, if requested.
+    Otherwise, if the dir does not exist, raises an Error
+
+    :param str file_path: Path to a file
+    :param error_if_exists: Raise error if file exists
+    :param create_dir: Create the dir if it doesn't exist?
+    :param bool create_parents: If True, Then create all ancestors as needed.
+    :param bool verbose:
+    """
+    path = Path(file_path)
+    if path.exists():
+        if error_if_exists:
+            raise FileExistsError(file_path)
+        elif verbose:
+            print("The following file exists and will be overwritten:", file_path)
+            print(flush=True)
+
+        return
+
+    path = path.parent
+
+    if not path.exists():
+        if create_dir:
+            if verbose:
+                print('Creating dir:', path)
+                print(flush=True)
+            path.mkdir(parents=create_parents)
+        else:
+            raise FileNotFoundError("Directory does not exist: " + str(path))
+
+    elif not path.is_dir():
+        raise NotADirectoryError("Path exists but is not a dir: " + str(path))
+
+    return
+
+
 def fn_name(fn):
     """Return str name of a function or method."""
     s = str(fn)

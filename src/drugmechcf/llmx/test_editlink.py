@@ -27,7 +27,8 @@ from drugmechcf.llmx.prompts_editlink import (PromptBuilder,
 
 from drugmechcf.text.optsmatcher import OptionsMatcher
 
-from drugmechcf.utils.misc import NpEncoder, pp_funcargs, pp_underlined_hdg, pp_dict, buffered_stdout
+from drugmechcf.utils.misc import (NpEncoder, pp_funcargs, pp_underlined_hdg, pp_dict,
+                                   buffered_stdout, check_output_file_dir)
 
 
 # -----------------------------------------------------------------------------
@@ -273,6 +274,9 @@ class TestEditLink:
 
         pp_underlined_hdg(f"Edit-Link Batch Test", linechar='~', overline=True)
         pp_funcargs(self.test_batch)
+
+        if output_json_file is not None:
+            check_output_file_dir(output_json_file)
 
         self.show_full_prompt = show_full_prompt
         self.show_response = show_response

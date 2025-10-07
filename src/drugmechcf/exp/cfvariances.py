@@ -34,7 +34,7 @@ from drugmechcf.llmx.test_addlink import TestAddLink, test_addlink_batch
 from drugmechcf.llmx.test_editlink import TestEditLink, test_editlink_batch
 
 from drugmechcf.utils.misc import (NpEncoder, pp_underlined_hdg, suppressed_stdout,
-                                   pp_dict, pp_funcargs, reset_df_index)
+                                   pp_dict, pp_funcargs, reset_df_index, check_output_file_dir)
 
 from .bootstrap import stratified_bootstrap
 
@@ -303,6 +303,9 @@ def multirun_stats_editlink(input_file: str, output_file: str):
 
     assert input_file != output_file, "Input and output files are same!"
 
+    if output_file is not None:
+        check_output_file_dir(output_file)
+
     with open(input_file) as f:
         sdict = json.load(f)
 
@@ -523,6 +526,9 @@ def multirun_stats_addlink(input_file: str, output_file: str):
     pp_funcargs(multirun_stats_addlink)
 
     assert input_file != output_file, "Input and output files are same!"
+
+    if output_file is not None:
+        check_output_file_dir(output_file)
 
     with open(input_file) as f:
         sdict = json.load(f)

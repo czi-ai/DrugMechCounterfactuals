@@ -20,7 +20,7 @@ from drugmechcf.llm.openai import CompletionOutput, get_openai_client, OpenAICom
 from drugmechcf.graphmatch.graphmatcher import GraphMatchScore, BasicGraphMatcher
 from drugmechcf.llm.test_common import ENTITY_TYPE_EQUIVALENCES, test_moa_match, pprint_accumulated_metrics
 
-from drugmechcf.utils.misc import NpEncoder, pp_funcargs, pp_underlined_hdg
+from drugmechcf.utils.misc import NpEncoder, pp_funcargs, pp_underlined_hdg, check_output_file_dir
 
 
 # -----------------------------------------------------------------------------
@@ -84,6 +84,9 @@ def test_positives_batch(count: int = 10,
     """
 
     pp_funcargs(test_positives_batch)
+
+    if json_file is not None:
+        check_output_file_dir(json_file)
 
     # Convert to enum value
     prompt_style = PromptStyle[prompt_style.upper()]
@@ -376,6 +379,9 @@ def test_negatives_batch(count: int = 10,
     """
 
     pp_funcargs(test_negatives_batch)
+
+    if json_file is not None:
+        check_output_file_dir(json_file)
 
     # Convert to enum value
     prompt_style = PromptStyle[prompt_style.upper()]

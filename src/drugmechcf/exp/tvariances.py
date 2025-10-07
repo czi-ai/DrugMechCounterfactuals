@@ -93,6 +93,12 @@ def run_known_moa(positives: bool, prompt_style, run_nbr: int = 0, samples_file:
 
 
 def multirun_stats_known_moa(nruns: int = 5):
+    """
+    Run `nruns` sessions for factual queries (known_moa) to compute response metric variances.
+    Output is on stdout.
+
+    :param nruns:
+    """
 
     pp_funcargs(multirun_stats_known_moa)
 
