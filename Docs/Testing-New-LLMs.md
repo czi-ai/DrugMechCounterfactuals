@@ -13,10 +13,10 @@ These should be accessible by supplying the appropriate model name to the class 
 
 The easiest option is to use [vllm as an OpenAI compatible server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html) to serve the LLM hosted at your own server.
 
-Once you have [installed vllm](https://docs.vllm.ai/en/latest/getting_started/quickstart.html), you can run it as follows (example showing it hosting the model `Qwen/Qwen2.5-3B-Instruct`, which gets automatically downloaded from HuggingFace):
+Once you have [installed vllm](https://docs.vllm.ai/en/latest/getting_started/quickstart.html), and [flashinfer](https://github.com/flashinfer-ai/flashinfer) if needed, you can run it as follows (example showing it hosting the model [Qwen3-4B-Thinking-2507-FP8](https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507-FP8), which gets automatically downloaded from HuggingFace):
 
 ```
-$ vllm serve Qwen/Qwen2.5-3B-Instruct --dtype auto --max-num-batched-tokens 32768
+$ vllm serve Qwen/Qwen3-4B-Thinking-2507-FP8 --max-model-len 200000 --reasoning-parser deepseek_r1
 ```
 
 This LLM can now be accessed by specifying the `base_url`, e.g.  `base_url = "http://localhost:8000/v1"` argument.
@@ -49,6 +49,11 @@ As an example, for vllm-served models, supply the following additional arguments
 * `base_url`: e.g. `"http://localhost:8000/v1"`
 * `n_worker_threads`: e.g. 1 (vllm most likely will not support multiple threads)
 * `timeout_secs`: e.g. 300 (in seconds), depending on the model and the server
+
+
+## An Example
+
+The shell script [run\_qwen\_all.sh](../src/run_qwen_all.sh) gives an example for testing a vllm-hosted Qwen model on all the counterfactual queries and query modes.
 
 
 ## Running Factual Queries

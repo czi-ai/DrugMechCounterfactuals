@@ -14,6 +14,31 @@ There are two main ways to invoke the evaluation framework, for the experiments 
 These are described below.
 
 
+## Quick start
+
+Look at the following shell scripts for evaluating the OpenAI models described in the accompanying paper:
+
+* [run\_addlink.sh](../src/run_addlink.sh) for Add-Link queries, and 
+* [run\_editlink.sh](../src/run_editlink.sh) for Invert-Link and Delete-Link queries.
+
+These scripts will run all the models on the corresponding queries once for each query mode (Closed and Open world), and place the outputs under `../Data/Sessions/Models/`.
+
+To compile the metrics from these runs, invoke the following:
+
+```
+(dmcf) $ cd $PROJDIR/src
+(dmcf) $ python -m drugmechcf.exp.metrics compile ../Data/Sessions/Models/*/*.json > cfmetrics.md
+```
+
+To compile grouped metrics, as shown in Table VI in the accompanying paper, execute:
+
+```
+(dmcf) $ cd $PROJDIR/src
+(dmcf) $ python -m drugmechcf.exp.cfvariances summarize ../Data/Sessions/Models > cf_grouped_metrics.md
+```
+
+
+
 ## Running Counterfactual Queries
 
 ### Add-Link Queries
@@ -32,14 +57,17 @@ and here is an example call:
 ```
 $ python -m drugmechcf.llmx.test_addlink batch -m o4-mini \
 			 ../Data/Counterfactuals/AddLink_pos_dpi_r1k.json  \
-           ../Data/Sessions/ModelRuns/o4-mini/addlink_pos_dpi.json 2>&1  \
-           | tee ../Data/Sessions/ModelRuns/o4-mini/addlink_pos_dpi_log.txt
+           ../Data/Sessions/Models/o4-mini/addlink_pos_dpi.json 2>&1  \
+           | tee ../Data/Sessions/Models/o4-mini/addlink_pos_dpi_log.txt
 ```
 
 which runs the set of positive surface counterfactuals from the dataset file `AddLink_pos_dpi_r1k.json` against the `o4-mini` model using the open-world setting.
 
 
 #### Computing mean Accuracy
+
+When LLMs exhibit some stochastic variability in their response, we would like to get a 
+mean accuracy metric and a confidence interval range, derived from a number of runs.
 
 The Python package `drugmechcf.exp.cfvariances` contains the code to compute mean accuracy and confidence interval for all counterfactual queries. For example, the following command will run Invert-Link queries using the parameters specified in an options file `opt_add_open.json`:
 
@@ -67,8 +95,8 @@ and here is an example call:
 ```
 $ python -m drugmechcf.llmx.test_editlink batch -m o4-mini -k \
 			 ../Data/Counterfactuals/change_pos_dpi_r250.json  \
-           ../Data/Sessions/ModelRuns/o4-mini/change_pos_dpi_r250-k.json  \
-           2>&1 | tee ../Data/Sessions/ModelRuns/o4-mini/change_pos_dpi_r250-k_log.txt
+           ../Data/Sessions/Models/o4-mini/change_pos_dpi_r250-k.json  \
+           2>&1 | tee ../Data/Sessions/Models/o4-mini/change_pos_dpi_r250-k_log.txt
 ```
 
 which runs the set of positive surface counterfactuals from the dataset file `change_pos_dpi_r250.json` (Edit-Link queries) against the `o4-mini` model using the closed-world setting.
@@ -93,12 +121,12 @@ This command computes mean accuracy for Delete-Link queries in the closed world 
 Table VI in our FLLM-25 paper reports mean accuracies across groups of queries, with variance computed using stratified bootstrap, from previously run sessions. These metrics are computed using the function `drugmechcf.exp.cfvariances.summarize_counterfactual_metrics_bs()`, invoked from the command line as:
 
 ```
-(dmcf) $ python -m drugmechcf.exp.cfvariances summarize ../Data/Sessions/ModelRuns
+(dmcf) $ python -m drugmechcf.exp.cfvariances summarize ../Data/Sessions/Models
 ```
 
 Grouped metrics are computed from previously saved single sessions (i.e. their output JSON files) for all the query types and modes, as described in the **Batch mode** sections above.
 
-The single argument (e.g. `../Data/Sessions/ModelRuns`) points to the dir under which there is a subdir for each model, and within that dir are the JSON session files for each query type. The name of the session file is the same as that of the input samples file (from `"Data/Counterfactuals/"`), except it ends in `"-k.json"` if the query mode was "Closed World".
+The single argument (e.g. `../Data/Sessions/Models`) points to the dir under which there is a subdir for each model, and within that dir are the JSON session files for each query type. The name of the session file is the same as that of the input samples file (from `"Data/Counterfactuals/"`), except it ends in `"-k.json"` if the query mode was "Closed World".
 
 
 ## Running Factual Queries

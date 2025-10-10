@@ -808,7 +808,7 @@ def stratified_bootstrapped_stats(session_files: list[str],
     return bs_stats
 
 
-def read_all_session_files(bdir = "../Data/Sessions/ModelRuns") -> pd.DataFrame:
+def read_all_session_files(bdir = "../Data/Sessions/Models") -> pd.DataFrame:
     """
     Compile a df with annotated session files.
     :param bdir: Parent dir, under which there is a subdir for each model, and within that dir are the
@@ -855,7 +855,7 @@ def read_all_session_files(bdir = "../Data/Sessions/ModelRuns") -> pd.DataFrame:
     return df
 
 
-def summarize_counterfactual_metrics_bs(bdir: str = "../Data/Sessions"):
+def summarize_counterfactual_metrics_bs(bdir: str = "../Data/Sessions/Models"):
     """
     Compile grouped metrics, as described in the paper in
         "Table VI: GROUPED ACCURACIES FOR COUNTERFACTUALS, SHOWING TRENDS."
@@ -991,10 +991,10 @@ def pp_bs_stats(hdg: str, df: pd.DataFrame):
 # To run
 # ------
 #
-# [Python]$ python -m drugmechcf.exp.cfvariances {add_link | edit_link | ...}  [-m MODEL]
+# [src]$ python -m drugmechcf.exp.cfvariances {add_link | edit_link | ...}  [-m MODEL]
 #
 # e.g. (as executed from `$PROJDIR/src/`):
-# [Python]$ python -m drugmechcf.exp.cfvariances edit_link ../Data/Sessions/Variances/opt_change_open.json    \
+# [src]$ python -m drugmechcf.exp.cfvariances edit_link ../Data/Sessions/Variances/opt_change_open.json    \
 #               ../Data/Sessions/Variances/runs_change_open.json  \
 #               2>&1 | tee ../Data/Sessions/Variances/log_change_open.txt
 #
@@ -1043,7 +1043,7 @@ if __name__ == "__main__":
     _sub_cmd_parser = _subparsers.add_parser('summarize',
                                              help="Summarize accuracy metric Groups from Excel sheet.")
     _sub_cmd_parser.add_argument('base_dir', type=str, nargs="?",
-                                 default="../Data/Sessions",
+                                 default="../Data/Sessions/Models",
                                  help="Input JSON files containing multi-run session.")
 
     # ...

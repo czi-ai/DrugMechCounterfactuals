@@ -2,9 +2,10 @@
 Analyze and summarize metrics
 """
 
-from collections import Counter
+from collections import Counter, defaultdict
 import glob
 import json
+import os.path
 
 import numpy as np
 import pandas as pd
@@ -12,10 +13,118 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
+from drugmechcf.llm.openai import MODEL_KEYS
+
 
 # -----------------------------------------------------------------------------
 #   Functions
 # -----------------------------------------------------------------------------
+
+
+def compile_session_accuracy_metrics(run_files: list[str], to_csv=False):
+    """
+    Compile accuracy metrics from a list of single-session JSON output files.
+    Output to stdout.
+
+    :param run_files: List of paths to JSON output files from single-session runs across models and query-types
+    :param to_csv: Output to CSV? Default output is markdown.
+    """
+
+    print("Files processed:")
+    print(*[f if to_csv else f.replace("_", "\\_") for f in run_files], sep="\n")
+    print()
+
+    model_to_mkey = dict((v, k) for k, v in MODEL_KEYS.items())
+
+    task_mstats = defaultdict(lambda: defaultdict(dict))
+
+    metric_keys = ["binary-strict/accuracy", "binary-relaxed/accuracy", "accuracy"]
+
+    # ---
+    def get_metric(metrics, m_key):
+        sub_key = None
+        if "/" in m_key:
+            key, sub_key = m_key.split("/")
+        else:
+            key = m_key
+
+        val = metrics.get(key)
+        if val is None:
+            return
+        if isinstance(val, dict):
+            return val.get(sub_key)
+        else:
+            return val
+    # ---
+
+    models = set()
+
+    for rfile in sorted(run_files):
+        with open(rfile) as jf:
+            sdict = json.load(jf)
+
+            qtype = sdict["args"]["query_type"]
+            dataset = os.path.basename(sdict["args"]["samples_data_file"])
+
+            is_pos = "pos" if not sdict["args"]["samples_are_negative"] else "neg"
+            is_surface = "surface" if sdict["args"]["source_node_is_drug"] else "deep"
+            is_closed = "closed" if sdict["args"]["insert_known_moas"] else "open"
+
+            model = sdict["args"]["OpenAICompletionOpts"]["model"]
+            model = model_to_mkey.get(model, model)
+
+            models.add(model)
+
+            if not to_csv:
+                dataset = dataset.replace("_", "\\_")
+
+            for mkey in metric_keys:
+                if v := get_metric(sdict["metrics"], mkey):
+                    mdict = task_mstats[(qtype, is_closed, is_pos, is_surface, dataset, mkey)]
+                    mdict[model] = v
+
+    models = sorted(models)
+
+    print()
+    print("## Strict Accuracies:\n")
+
+    df = pd.DataFrame.from_records([(*k, *[mdict.get(m, np.nan) for m in models])
+                                    for k, mdict in task_mstats.items()
+                                    if "relaxed" not in k[5]
+                                    ],
+                                   columns=["QueryType", "is_Closed", "is_Positive", "is_Surface",
+                                            "Dataset", "metric", *models]
+                                   )
+    df = df.sort_values(["QueryType", "is_Closed", "is_Positive", "is_Surface"],
+                        ascending=[True, False, False, False],
+                        ignore_index=True)
+
+    if to_csv:
+        print(df.to_csv())
+    else:
+        print(df.to_markdown(floatfmt='.3f'))
+    print("\n")
+
+    print("## Relaxed Accuracies:\n")
+
+    df = pd.DataFrame.from_records([(*k, *[mdict.get(m, np.nan) for m in models])
+                                    for k, mdict in task_mstats.items()
+                                    if "relaxed" in k[5]
+                                    ],
+                                   columns=["QueryType", "is_Closed", "is_Positive", "is_Surface",
+                                            "Dataset", "metric", *models]
+                                   )
+    df = df.sort_values(["QueryType", "is_Closed", "is_Positive", "is_Surface"],
+                        ascending=[True, False, False, False],
+                        ignore_index=True)
+
+    if to_csv:
+        print(df.to_csv())
+    else:
+        print(df.to_markdown(floatfmt='.3f'))
+    print()
+
+    return
 
 
 # noinspection PyPep8Naming
@@ -88,3 +197,64 @@ def get_llm_opt_freq(files_patt: str):
 
     print()
     return
+
+
+# ======================================================================================================
+#   Main
+# ======================================================================================================
+
+# To run
+# ------
+#
+# [Python]$ python -m drugmechcf.exp.metrics {compile | ...} ...
+#
+# e.g.
+# [Python]$ python -m drugmechcf.exp.metrics compile ../Data/Sessions/Models/*/*.json > cfmetrics.md
+#
+
+if __name__ == "__main__":
+
+    import argparse
+    from datetime import datetime
+    from drugmechcf.utils.misc import print_cmd
+
+    _argparser = argparse.ArgumentParser(
+        description='Compute summary stats from multiple runs.',
+    )
+
+    _subparsers = _argparser.add_subparsers(dest='subcmd',
+                                            title='Available commands',
+                                            )
+    # Make the sub-commands required
+    _subparsers.required = True
+
+    # ... compile
+    _sub_cmd_parser = _subparsers.add_parser('compile',
+                                             help="Gather accuracy metrics from multiple run files.")
+    _sub_cmd_parser.add_argument("--csv", action="store_true",
+                                 help="Output table to CSV format. Default output is Markdown.")
+    _sub_cmd_parser.add_argument('input_files', type=str, nargs="+",
+                                 help="Input JSON files, each containing single-run session.")
+
+    # ...
+
+    _args = _argparser.parse_args()
+    # .................................................................................................
+
+    start_time = datetime.now()
+
+    print("---------------------------------------------------------------------")
+    print_cmd()
+
+    if _args.subcmd == 'compile':
+
+        compile_session_accuracy_metrics(_args.input_files, to_csv=_args.csv)
+
+    else:
+
+        raise NotImplementedError(f"Command not implemented: {_args.subcmd}")
+
+    # /
+
+    print('\nTotal Run time =', datetime.now() - start_time)
+    print()

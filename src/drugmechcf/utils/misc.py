@@ -176,7 +176,7 @@ def get_temp_dir():
     return temp_dir
 
 
-def check_output_file_dir(file_path,
+def check_output_file_dir(file_path: str,
                           *,
                           error_if_exists=False,
                           create_dir=True,

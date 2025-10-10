@@ -725,7 +725,14 @@ def test_addlink_batch(samples_data_file: str,
                        #
                        show_full_prompt=False,
                        show_response=False,
+                       #
+                       max_samples=None,
                        ):
+
+    global DEBUG_NO_LLM, MAX_TEST_SAMPLES
+
+    if max_samples:
+        MAX_TEST_SAMPLES = max_samples
 
     tester = TestAddLink(model_key=model_key,
                          api_key=api_key,
@@ -766,8 +773,8 @@ def show_globals():
 # --- e.g. Testing +ive samples (executed from `$PROJDIR/src/`):
 #
 # $ python -m drugmechcf.llmx.test_addlink batch ../Data/Counterfactuals/AddLink_pos_dpi_r1k.json  \
-#           ../Data/Sessions/ModelRuns/o3-mini/addlink_pos_dpi.json 2>&1  \
-#           | tee ../Data/Sessions/ModelRuns/o3-mini/addlink_pos_dpi_log.txt
+#           ../Data/Sessions/Models/o3-mini/addlink_pos_dpi.json 2>&1  \
+#           | tee ../Data/Sessions/Models/o3-mini/addlink_pos_dpi_log.txt
 #
 
 if __name__ == "__main__":
