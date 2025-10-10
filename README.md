@@ -24,19 +24,21 @@ Python code for the evaluation framework can be found under the `src/` sub-direc
 
 As an example setup for using the code (using the environment variable `PROJDIR` to point to the path where DrugMechCounterfactuals has been cloned, e.g. `PROJDIR=/Users/Me/Projects/DrugMechCounterfactuals`):
 
-1. Create a virtual environment, e.g. 
+1. Create a virtual environment for the project, e.g. 
 
 	```
 	$ cd $PROJDIR
-	$ python -m venv --system-site-packages dmcf
-	$ source dmcf/bin/activate
+	$ uv venv --python 3.12 --seed --prompt dmcf
+	$ source .venv/bin/activate
+	(dmcf) $
 	```
+	
+	This creates a virtual environment in `$PROJDIR/.venv`.
 	
 2. Install the requirements, e.g.
 
 	```
-	(dmcf) $ cd $PROJDIR
-	(dmcf) $ pip install -r requirements.txt
+	(dmcf) $ uv pip install -r requirements.txt
 	```
 
 3. Invoke the appropriate Python scripts from the `src` sub-directory. For example, to pretty-print samples from the Add-Link positives surface-counterfactuals query set:
@@ -60,9 +62,8 @@ Please consult the following documents for a more detailed description of the Da
 ```
 @inproceedings{DrugMechCounterfactuals,
   author = {Sunil Mohan and Theofanis Karaletsos},
-  title = {How Well Does {ChatGPT} Understand Drug Mechanisms? A Knowledge + Reasoning Evaluation},
-  booktitle = {3rd International Conference on Foundation and Large Language Models},
-  series = {FLLM 2025},
+  title = {How Well Does {ChatGPT} Understand Drug Mechanisms? A Knowledge + Reasoning Evaluation Dataset},
+  booktitle = {2025 3rd International Conference on Foundation and Large Language Models (FLLM)},
   year = {2025},
   pages = {},
   doi = {},
