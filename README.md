@@ -22,7 +22,7 @@ The counterfactual queries are derived from [DrugMechDB](https://github.com/SuLa
 
 Python code for the evaluation framework can be found under the `src/` sub-directory. Requirements for using the code are listed in `requirements.txt`. The code has been tested with Python version 3.11.5, but should also work with more recent versions.
 
-As an example setup for using the code (using the environment variable `PROJDIR` to point to the path where DrugMechCounterfactuals has been cloned, e.g. `PROJDIR=/Users/Me/Projects/DrugMechCounterfactuals`):
+Shown below is an example setup for using the code. For convenience, we will use the environment variable `PROJDIR` to refer to the path where DrugMechCounterfactuals has been cloned, e.g. `PROJDIR=/Users/Me/Projects/DrugMechCounterfactuals`. Note that this environment variable is not needed by the code or the setup process.
 
 1. Create a virtual environment for the project, e.g. 
 

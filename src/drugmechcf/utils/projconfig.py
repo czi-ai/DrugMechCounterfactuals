@@ -2,11 +2,8 @@
 Project specific configuration
 """
 
-import datetime
 import os
 from pathlib import Path
-
-from drugmechcf.utils.misc import in_databricks_and_dbfs
 
 
 # -----------------------------------------------------------------------------
@@ -14,7 +11,6 @@ from drugmechcf.utils.misc import in_databricks_and_dbfs
 # -----------------------------------------------------------------------------
 
 # Shell vars containing path to dir containing DrugMechCounterfactuals clone.
-SHELLVAR_PROJDIR = "PROJDIR"
 SHELLVAR_DRUGMECHCFDIR = "DRUGMECHCFDIR"
 
 # Shell Var for getting DataBricks UserName
@@ -30,6 +26,7 @@ class InvalidEnvironmentError(TypeError):
     pass
 
 
+# noinspection PyMethodMayBeStatic
 class ProjectConfig:
 
     def __init__(self, project_name: str):
@@ -40,14 +37,9 @@ class ProjectConfig:
     def get_input_basedir(self, verbose=True) -> str:
         """
         Get the base-dir for input files created for this project.
-
-        In Databricks, it will be "/dbfs/Users/{user}/{proj_name}/".
-        Otherwise, it will use "$PROJDIR/".
+        Referred to as "$PROJDIR/".
         """
-        if in_databricks_and_dbfs():
-            basedir = get_project_data_basedir_databricks(self.project_name)
-        else:
-            basedir = get_project_base_dir()
+        basedir = get_project_base_dir()
 
         if verbose and not os.path.isdir(basedir):
             print(f"WARNING:  Project base dir  `{basedir}`  does not exist!")
@@ -58,14 +50,8 @@ class ProjectConfig:
         """
         Get the base-dir for output files created for this project.
         Create it, if it does not already exist.
-
-        In Databricks, it will be "/dbfs/Users/{user}/{proj_name}".
-        Otherwise, it will use "$PROJDIR/Temp".
         """
-        if in_databricks_and_dbfs():
-            basedir = get_project_data_basedir_databricks(self.project_name)
-        else:
-            basedir = get_project_local_temp_dir()
+        basedir = get_project_local_temp_dir()
 
         if create_it and not os.path.isdir(basedir):
             os.makedirs(basedir)
@@ -104,8 +90,6 @@ def get_project_base_dir():
     """
     if projdir := os.environ.get(SHELLVAR_DRUGMECHCFDIR):
         return projdir
-    elif projdir := os.environ.get(SHELLVAR_PROJDIR):
-        return projdir
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
@@ -125,21 +109,6 @@ def get_project_local_temp_dir():
     """
     temp_dir = os.path.join(get_project_base_dir(), "Temp")
     return temp_dir
-
-
-def get_project_data_basedir_databricks(proj_name: str) -> str:
-    """
-    /dbfs/Users/{user}/{proj_name}
-    """
-    if not in_databricks_and_dbfs():
-        raise InvalidEnvironmentError("Not in Databricks")
-
-    # This would get set in the Cluster Configuration
-    user = os.environ.get(SHELLVAR_DATABRICKS_USER_NAME, "UnknownUser")
-
-    basedir = f"/dbfs/Users/{user}/{proj_name}"
-
-    return basedir
 
 
 def get_project_config(proj_name=None):

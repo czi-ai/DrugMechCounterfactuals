@@ -9,7 +9,6 @@ import io
 import itertools
 import json
 import os
-import pickle
 from pathlib import Path
 import re
 import sys
@@ -109,42 +108,6 @@ class ValidatedDataclass:
 # /
 
 
-class PersistentObject:
-    def __init__(self):
-        self._fpath = None
-        super().__init__()
-
-    @classmethod
-    def load_from(cls, fpath, obj_name='', verbose=True):
-        if verbose:
-            if not obj_name:
-                obj_name = cls.__name__
-            print('Loading {} from: {} ...'.format(obj_name, fpath), end='', flush=True)
-
-        with open(fpath, 'rb') as f:
-            obj = pickle.load(f, fix_imports=False, encoding="UTF-8")
-
-        obj._fpath = fpath
-
-        if verbose:
-            print(" completed.", flush=True)
-        return obj
-
-    def save(self, fpath, verbose=True):
-        if verbose:
-            print('Saving {} to: {} ...'.format(self.__class__.__name__, fpath), end='', flush=True)
-
-        self._fpath = fpath
-
-        with open(fpath, 'wb') as f:
-            pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
-
-        if verbose:
-            print(flush=True)
-        return
-# /
-
-
 class NpEncoder(json.JSONEncoder):
     """
     Usage: json.dump(f, data, cls=NpEncoder)
@@ -163,18 +126,6 @@ class NpEncoder(json.JSONEncoder):
 # -----------------------------------------------------------------------------
 #   Functions
 # -----------------------------------------------------------------------------
-
-def get_temp_dir():
-    path = os.path.abspath(__file__)
-    dir_path = os.path.dirname(path)
-    try:
-        python_base_idx = dir_path.index("Python")
-        temp_dir = os.path.join(dir_path[:python_base_idx], "Temp")
-    except ValueError:
-        temp_dir = os.path.join(Path(dir_path).parent, "Temp")
-
-    return temp_dir
-
 
 def check_output_file_dir(file_path: str,
                           *,
@@ -364,10 +315,6 @@ def get_longest(l: List[str]) -> Optional[str]:
     return x
 
 
-def in_databricks_and_dbfs() -> bool:
-    return os.environ.get("DATABRICKS_RUNTIME_VERSION") and os.path.isdir('/dbfs')
-
-
 def is_interactive_mode():
     """
     Whether program is running in interactive mode.
@@ -380,85 +327,12 @@ def is_batch_mode():
     return not is_interactive_mode()
 
 
-def print_databricks_env():
-    print("Databricks env vars:")
-    count = 0
-    for k, v in os.environ.items():
-        if "DATABRICKS" in k:
-            count += 1
-            print("   ", k, "=", v)
-    if not count:
-        print("    No 'DATABRICKS' env vars found.")
-    return
-
-
 def pp_underlined_hdg(hdg, overline=False, linechar="-", file=None):
     if overline:
         print(linechar * len(hdg), file=file)
     print(hdg, linechar * len(hdg), sep="\n", file=file)
     print(file=file)
     return
-
-
-def rdescribe(data, name: str = None, indent: str = None, nsamples: int = 5, max_depth: int = 2, cdepth: int = 1):
-    """
-    Recursive description of `data`
-    """
-    if name is None:
-        name = ""
-    if indent is None:
-        indent = ""
-
-    mname = f"{name}: " if name else ""
-    msg = f"{indent}{mname}type={type(data).__name__}"
-    if hasattr(data, '__len__'):
-        msg += f", len={len(data):,d}"
-
-    if isinstance(data, str):
-        max_str_sz = 20
-        sfx = "..." if len(data) > max_str_sz else ""
-        print(f"{msg}.  value = '{data[:max_str_sz]}{sfx}'")
-    elif isinstance(data, dict):
-        print(f'{msg}.  keys =', ', '.join(data.keys()))
-    else:
-        print(msg)
-
-    if isinstance(data, Sequence) and not isinstance(data, str):
-        if cdepth > max_depth:
-            print(indent, " " * len(mname), "...", sep="")
-            return
-
-        for i, v in enumerate(data[:nsamples]):
-            print()
-            rdescribe(v, name=f"{name}[{i}]", indent=indent + "    ", nsamples=nsamples,
-                      max_depth=max_depth, cdepth=cdepth + 1)
-        if len(data) > nsamples:
-            print(indent + "   ", "...")
-
-    elif isinstance(data, dict):
-        if cdepth > max_depth:
-            print(indent, " " * len(mname), "...", sep="")
-            return
-
-        for k, v in data.items():
-            print()
-            rdescribe(v, name=f"{name}[`{k}`]", indent=indent + "    ", nsamples=nsamples,
-                      max_depth=max_depth, cdepth=cdepth + 1)
-
-    return
-
-
-def pluralize(word: str) -> str:
-    """
-    Very simple pluralizer for English words. Not completely accurate.
-    See also: modules `pattern.en`, `TextBlob`
-    """
-    if re.search('[sxz]$', word) or re.search('[^aeioudgkprt]h$', word):
-        return word + "es"
-    elif re.search('[^aeiou]y$', word):
-        return word[:-1] + "ies"
-    else:
-        return word + "s"
 
 
 def split_camel_case(txt: str) -> List[str]:
