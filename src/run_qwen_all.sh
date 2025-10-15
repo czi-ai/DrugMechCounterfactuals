@@ -3,8 +3,8 @@
 #  Run all the Add-Link queries against the 4 ChatGPT models
 #
 #  To run:
-#	$ source $PRODIR/.venv/bin/activate
-#	(dmcf) $ cd $PRODIR/src
+#	$ source $PROJDIR/.venv/bin/activate
+#	(dmcf) $ cd $PROJDIR/src
 #	(dmcf) $ ./run_qwen_all.sh
 #
 
